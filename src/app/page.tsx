@@ -5,7 +5,7 @@ import { Bell, ChevronRight, Zap, X, MapPin, Loader2, Navigation } from 'lucide-
 import { useApp } from '../context/AppContext';
 import { MERCHANTS, DASHBOARD_SCENARIO_IDS } from '../data/merchants';
 import { buildContext, getRecommendation } from '../lib/recommendation';
-import { sendBrowserNotification } from '../lib/location';
+import { sendBrowserNotification, distanceLabel, WALK_THRESHOLD_M } from '../lib/location';
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces';
 import { RecommendationModal } from '../components/RecommendationModal';
 import { BottomNav } from '../components/BottomNav';
@@ -59,9 +59,8 @@ function NearbyPlaceRow({
     } catch { return null; }
   })();
 
-  const distLabel = (place.distance ?? 0) < 1000
-    ? `${place.distance}m`
-    : `${((place.distance ?? 0) / 1000).toFixed(1)}km`;
+  const dist = place.distance ?? 0;
+  const { label: distLbl, mode } = distanceLabel(dist);
 
   return (
     <button
@@ -73,7 +72,12 @@ function NearbyPlaceRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-gray-900 truncate">{place.name}</p>
-        <p className="text-xs text-gray-500 capitalize">{place.category} · {distLabel} away</p>
+        <p className="text-xs text-gray-500 capitalize">
+          {place.category}
+          <span className={`ml-1.5 ${mode === 'drive' ? 'text-sky-500' : 'text-emerald-500'}`}>
+            · {mode === 'drive' ? '🚗' : '🚶'} {distLbl}
+          </span>
+        </p>
       </div>
       {rec && (
         <div className="flex-shrink-0 text-right">
@@ -117,7 +121,7 @@ function NearbyAlert({
     return (
       <div className="mx-4 mt-4 p-3 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-2">
         <Loader2 size={14} className="text-emerald-400 animate-spin flex-shrink-0"/>
-        <p className="text-xs text-emerald-600 font-medium">Scanning nearby businesses…</p>
+        <p className="text-xs text-emerald-600 font-medium">Finding nearby businesses…</p>
       </div>
     );
   }
@@ -146,7 +150,7 @@ function NearbyAlert({
     return (
       <div className="mx-4 mt-4 p-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center gap-2">
         <MapPin size={13} className="text-gray-300 flex-shrink-0"/>
-        <p className="text-xs text-gray-400">No businesses found within walking distance.</p>
+        <p className="text-xs text-gray-400">No businesses found nearby.</p>
       </div>
     );
   }
@@ -154,15 +158,20 @@ function NearbyAlert({
   if (places.length === 0) return null;
 
   const visible = places.slice(0, MAX_NEARBY);
+  const maxDist = Math.max(...visible.map(p => p.distance ?? 0));
+  const isDriving = maxDist >= WALK_THRESHOLD_M;
+  const rangeLabel = isDriving
+    ? `up to ${distanceLabel(maxDist).label}`
+    : 'walking distance';
 
   return (
     <div className="mx-4 mt-4">
       {/* Section header */}
       <div className="flex items-center justify-between mb-2 px-0.5">
         <div className="flex items-center gap-1.5">
-          <MapPin size={13} className="text-emerald-500"/>
-          <p className="text-[11px] uppercase tracking-widest font-bold text-emerald-600">
-            {visible.length} nearby · walking distance
+          <MapPin size={13} className={isDriving ? 'text-sky-500' : 'text-emerald-500'}/>
+          <p className={`text-[11px] uppercase tracking-widest font-bold ${isDriving ? 'text-sky-600' : 'text-emerald-600'}`}>
+            {visible.length} nearby · {rangeLabel}
           </p>
         </div>
         <button
