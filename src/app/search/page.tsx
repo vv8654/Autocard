@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, Zap, Loader2 } from 'lucide-react';
+import { Search, X, Zap, Loader2, MapPin } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ALL_MERCHANTS } from '../../data/allMerchants';
 import { detectCategoryFromName } from '../../lib/categoryDetect';
 import { buildContext, getRecommendation } from '../../lib/recommendation';
+import { searchNearbyByName, distanceLabel } from '../../lib/location';
 import { RecommendationModal } from '../../components/RecommendationModal';
 import { BottomNav } from '../../components/BottomNav';
 import { Category, Merchant, Recommendation } from '../../types';
@@ -19,6 +20,7 @@ interface SearchResult {
   emoji: string;
   scenarioLabel: string;
   source: 'local' | 'osm';
+  distance?: number;        // meters — present when found via proximity search
 }
 
 const CATEGORY_EMOJI: Record<Category, string> = {
@@ -58,7 +60,7 @@ const QUICK_CATEGORIES: { category: Category; label: string; emoji: string }[] =
   { category: 'online',    label: 'Online',    emoji: '📦' },
 ];
 
-// ── Nominatim search (OSM fallback for businesses not in local DB) ────────────
+// ── Nominatim US-wide fallback ────────────────────────────────────────────────
 
 interface NominatimHit {
   place_id: number;
@@ -71,10 +73,10 @@ interface NominatimHit {
 async function searchNominatim(query: string): Promise<SearchResult[]> {
   const url =
     `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}` +
-    `&format=json&limit=6&addressdetails=0&extratags=1`;
+    `&format=json&limit=6&addressdetails=0&extratags=1&countrycodes=us`;
 
   const res = await fetch(url, {
-    headers: { 'Accept-Language': 'en', 'User-Agent': 'AutoCard-Demo/1.0' },
+    headers: { 'Accept-Language': 'en', 'User-Agent': 'AutoCard/1.0' },
   });
   if (!res.ok) return [];
   const hits: NominatimHit[] = await res.json();
@@ -89,7 +91,7 @@ async function searchNominatim(query: string): Promise<SearchResult[]> {
   return hits
     .filter(h => h.display_name)
     .map(h => {
-      const name = h.display_name.split(',')[0];
+      const name    = h.display_name.split(',')[0];
       const amenity = h.extratags?.amenity ?? '';
       const shop    = h.extratags?.shop    ?? '';
       const cat: Category = TAG_MAP[amenity] ?? TAG_MAP[shop] ?? detectCategoryFromName(name);
@@ -132,6 +134,8 @@ function ResultRow({
   const ctx = { merchantId: result.id, merchant: syntheticMerchant, estimatedAmount: 50 };
   const rec = getRecommendation(ctx, enabledCards, bonuses, redemptionStyle);
 
+  const dist = result.distance != null ? distanceLabel(result.distance) : null;
+
   return (
     <button
       onClick={() => onTap(rec)}
@@ -142,17 +146,17 @@ function ResultRow({
         {result.emoji}
       </div>
 
-      {/* Name + category */}
+      {/* Name + category + distance */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <p className="font-bold text-gray-900 text-sm truncate">{result.name}</p>
-          {result.source === 'osm' && (
-            <span className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
-              OSM
+        <p className="font-bold text-gray-900 text-sm truncate">{result.name}</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {CATEGORY_LABEL[result.category]}
+          {dist && (
+            <span className={`ml-1.5 ${dist.mode === 'drive' ? 'text-sky-500' : 'text-emerald-500'}`}>
+              · {dist.mode === 'drive' ? '🚗' : '🚶'} {dist.label}
             </span>
           )}
-        </div>
-        <p className="text-xs text-gray-500">{CATEGORY_LABEL[result.category]}</p>
+        </p>
       </div>
 
       {/* Best card earn rate */}
@@ -175,13 +179,29 @@ function ResultRow({
 
 export default function SearchPage() {
   const { enabledCards, addToHistory, state } = useApp();
-  const [query,   setQuery]   = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [activeRec, setActiveRec] = useState<Recommendation | null>(null);
+  const [query,         setQuery]         = useState('');
+  const [results,       setResults]       = useState<SearchResult[]>([]);
+  const [loading,       setLoading]       = useState(false);
+  const [activeRec,     setActiveRec]     = useState<Recommendation | null>(null);
   const [activeCategory, setActiveCategory] = useState<Category | null>(null);
+  const [userCoords,    setUserCoords]    = useState<{ lat: number; lon: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef    = useRef<HTMLInputElement>(null);
+
+  // Resolve user location: manual pin takes priority, then live GPS
+  useEffect(() => {
+    if (state.manualLocation) {
+      setUserCoords({ lat: state.manualLocation.lat, lon: state.manualLocation.lon });
+      return;
+    }
+    if (state.locationSettings.enabled && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => setUserCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => { /* silent — search still works without location */ },
+        { timeout: 6_000, maximumAge: 120_000 },
+      );
+    }
+  }, [state.manualLocation, state.locationSettings.enabled]);
 
   // ── Search logic ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -198,14 +218,14 @@ export default function SearchPage() {
     setLoading(true);
 
     debounceRef.current = setTimeout(async () => {
-      // 1. Local merchants match
-      let local: SearchResult[] = ALL_MERCHANTS
+      // 1. Local merchant DB match (always run first — instant)
+      const local: SearchResult[] = ALL_MERCHANTS
         .filter(m => {
-          const matchesQ = !q || m.name.toLowerCase().includes(q.toLowerCase());
+          const matchesQ   = !q || m.name.toLowerCase().includes(q.toLowerCase());
           const matchesCat = !activeCategory || m.category === activeCategory;
           return matchesQ && matchesCat;
         })
-        .slice(0, 8)
+        .slice(0, 6)
         .map(m => ({
           id:            m.id,
           name:          m.displayName,
@@ -215,21 +235,41 @@ export default function SearchPage() {
           source:        'local' as const,
         }));
 
-      // 2. If searching by text and not enough local results, hit Nominatim
-      let osm: SearchResult[] = [];
-      if (q && local.length < 4 && !activeCategory) {
-        try { osm = await searchNominatim(q); } catch { /* ignore */ }
-        // Deduplicate by name
-        const localNames = new Set(local.map(r => r.name.toLowerCase()));
-        osm = osm.filter(r => !localNames.has(r.name.toLowerCase())).slice(0, 4);
+      // 2. Proximity search via Overpass when we have a location
+      let nearby: SearchResult[] = [];
+      if (q && userCoords && !activeCategory) {
+        try {
+          const places = await searchNearbyByName(q, userCoords.lat, userCoords.lon);
+          const existingNames = new Set(local.map(r => r.name.toLowerCase()));
+          nearby = places
+            .filter(p => !existingNames.has(p.name.toLowerCase()))
+            .map(p => ({
+              id:            p.id,
+              name:          p.name,
+              category:      p.category,
+              emoji:         CATEGORY_EMOJI[p.category],
+              scenarioLabel: CATEGORY_LABEL[p.category],
+              source:        'osm' as const,
+              distance:      p.distance,
+            }));
+        } catch { /* silent */ }
       }
 
-      setResults([...local, ...osm]);
+      // 3. Nominatim US-wide fallback — only when no location or results still sparse
+      let nominatim: SearchResult[] = [];
+      if (q && !activeCategory && !userCoords && local.length < 3) {
+        try { nominatim = await searchNominatim(q); } catch { /* silent */ }
+        const existingNames = new Set([...local, ...nearby].map(r => r.name.toLowerCase()));
+        nominatim = nominatim.filter(r => !existingNames.has(r.name.toLowerCase())).slice(0, 4);
+      }
+
+      // Merge order: local → nearby (sorted by distance) → nominatim
+      setResults([...local, ...nearby, ...nominatim]);
       setLoading(false);
-    }, 400);
+    }, 350);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, activeCategory]);
+  }, [query, activeCategory, userCoords]);
 
   function handleTap(rec: Recommendation) {
     addToHistory(rec);
@@ -250,12 +290,23 @@ export default function SearchPage() {
 
   const hasResults = results.length > 0;
   const showEmpty  = !loading && (query.trim() || activeCategory) && !hasResults;
+  const hasLocation = !!userCoords;
 
   return (
     <div className="pb-24">
       {/* Header */}
       <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 px-4 pt-14 pb-5">
-        <h1 className="text-white text-2xl font-black mb-4">Search</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-white text-2xl font-black">Search</h1>
+          {hasLocation && (
+            <div className="flex items-center gap-1 bg-white/10 rounded-full px-2.5 py-1">
+              <MapPin size={10} className="text-emerald-300"/>
+              <span className="text-emerald-300 text-[10px] font-semibold">
+                {state.manualLocation?.label ?? 'Near you'}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Search bar */}
         <div className="relative">
@@ -265,7 +316,7 @@ export default function SearchPage() {
             type="text"
             value={query}
             onChange={e => { setQuery(e.target.value); setActiveCategory(null); }}
-            placeholder="Search any business…"
+            placeholder={hasLocation ? 'Search near you or anywhere in the US…' : 'Search any business…'}
             className="w-full bg-white rounded-2xl pl-10 pr-10 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none shadow-sm"
           />
           {(query || activeCategory) && (
@@ -310,7 +361,7 @@ export default function SearchPage() {
         {loading && (
           <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
             <Loader2 size={18} className="animate-spin"/>
-            <span className="text-sm">Searching…</span>
+            <span className="text-sm">Searching{hasLocation ? ' nearby' : ''}…</span>
           </div>
         )}
 
@@ -329,25 +380,30 @@ export default function SearchPage() {
             <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400 px-1">
               {results.length} result{results.length !== 1 ? 's' : ''}
               {activeCategory ? ` in ${CATEGORY_LABEL[activeCategory]}` : ''}
+              {hasLocation && results.some(r => r.distance != null) ? ' · sorted by proximity' : ''}
             </p>
             {results.map(r => (
-              <ResultRow key={r.id} result={r} onTap={handleTap} enabledCards={enabledCards} bonuses={state.bonuses} redemptionStyle={state.redemptionStyle}/>
+              <ResultRow
+                key={r.id}
+                result={r}
+                onTap={handleTap}
+                enabledCards={enabledCards}
+                bonuses={state.bonuses}
+                redemptionStyle={state.redemptionStyle}
+              />
             ))}
-            {results.some(r => r.source === 'osm') && (
-              <p className="text-[10px] text-gray-400 text-center pt-1">
-                Some results from OpenStreetMap
-              </p>
-            )}
           </div>
         )}
 
-        {/* Default state — no query, no category */}
+        {/* Default state */}
         {!query && !activeCategory && !loading && (
           <div className="text-center py-12 px-6">
             <p className="text-4xl mb-3">🔍</p>
             <p className="text-gray-600 font-semibold text-sm">Search any business</p>
             <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-              Type a merchant name like "Starbucks" or tap a category above to see which card earns the most.
+              {hasLocation
+                ? 'Results near you appear first. You can still search anywhere in the US.'
+                : 'Type a merchant name like "Starbucks" or tap a category above to see which card earns the most.'}
             </p>
           </div>
         )}

@@ -167,6 +167,33 @@ export function distanceLabel(meters: number): { label: string; mode: 'walk' | '
 }
 
 /**
+ * Searches for businesses matching `query` within `radiusMeters` of a point.
+ * Uses Overpass regex so results are proximity-ranked by distance.
+ * Returns [] silently if all mirrors fail (caller falls back to Nominatim).
+ */
+export async function searchNearbyByName(
+  query: string,
+  lat: number,
+  lon: number,
+  radiusMeters = 15_000,
+): Promise<NearbyPlace[]> {
+  // Strip chars that break Overpass QL regex syntax
+  const safe = query.replace(/["\\]/g, '').trim();
+  if (!safe) return [];
+
+  const q = `[out:json][timeout:12];(
+nwr["name"~"${safe}",i](around:${radiusMeters},${lat},${lon});
+);out body center 15;`;
+
+  for (const mirror of OVERPASS_MIRRORS) {
+    const elements = await fetchFromMirror(mirror, q);
+    if (elements === null) continue;
+    return mapElements(elements, lat, lon).slice(0, 8);
+  }
+  return [];
+}
+
+/**
  * Returns a short human-readable label for a coordinate (neighbourhood/city level).
  * Returns null silently on any error so callers can fall back to "Live".
  */
