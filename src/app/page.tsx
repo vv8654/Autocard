@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Bell, ChevronRight, Zap } from 'lucide-react';
+import { Bell, ChevronRight, Zap, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { MERCHANTS, DASHBOARD_SCENARIO_IDS } from '../data/merchants';
 import { buildContext, getRecommendation } from '../lib/recommendation';
@@ -9,6 +9,14 @@ import { RecommendationModal } from '../components/RecommendationModal';
 import { BottomNav } from '../components/BottomNav';
 import { Recommendation } from '../types';
 import Link from 'next/link';
+
+function timeAgo(isoString: string): string {
+  const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 // Precompute the list of dashboard merchants (stable — based on constants)
 const DASHBOARD_MERCHANTS = DASHBOARD_SCENARIO_IDS
@@ -18,6 +26,7 @@ const DASHBOARD_MERCHANTS = DASHBOARD_SCENARIO_IDS
 export default function HomePage() {
   const { enabledCards, addToHistory, state } = useApp();
   const [activeRec, setActiveRec] = useState<Recommendation | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   /**
    * Iteration 1 — Preview earn rate badges on scenario buttons.
@@ -68,12 +77,16 @@ export default function HomePage() {
             </h1>
             <p className="text-indigo-200 text-sm mt-1">Right card. Right moment.</p>
           </div>
-          <div className="relative">
-            <Bell size={22} className="text-indigo-200" />
-            {latestRec && (
-              <span className="absolute -top-1 -right-0.5 w-2.5 h-2.5 bg-rose-400 rounded-full ring-2 ring-indigo-700" />
+          <button
+            onClick={() => setShowNotifications(prev => !prev)}
+            className="relative p-1 rounded-full hover:bg-white/10 transition-colors"
+            aria-label="Notifications"
+          >
+            <Bell size={22} className={showNotifications ? 'text-white' : 'text-indigo-200'} />
+            {state.history.length > 0 && !showNotifications && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-rose-400 rounded-full ring-2 ring-indigo-700" />
             )}
-          </div>
+          </button>
         </div>
 
         {/* Active Cards Strip */}
@@ -113,6 +126,89 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {/* ── Notifications Drawer ───────────────────────────────────────── */}
+      {showNotifications && (
+        <div className="animate-fade-in">
+          <div className="mx-4 mt-3 bg-white rounded-2xl border border-gray-100 shadow-lg overflow-hidden">
+            {/* Drawer header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Bell size={14} className="text-indigo-500" />
+                <span className="text-sm font-bold text-gray-900">Recent Tips</span>
+                {state.history.length > 0 && (
+                  <span className="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">
+                    {state.history.length}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowNotifications(false)}
+                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+              >
+                <X size={13} />
+              </button>
+            </div>
+
+            {/* Notification list */}
+            {state.history.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-gray-400 text-sm">No tips yet</p>
+                <p className="text-gray-300 text-xs mt-1">Tap a scenario below to get started</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+                {state.history.slice(0, 8).map(rec => (
+                  <button
+                    key={rec.id}
+                    onClick={() => {
+                      setActiveRec(rec);
+                      setShowNotifications(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    {/* Card swatch */}
+                    <div className={`w-8 h-8 flex-shrink-0 rounded-lg bg-gradient-to-br ${rec.best.card.gradient}`} />
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-gray-900 truncate">
+                          {rec.context.merchant.emoji} {rec.context.merchant.displayName}
+                        </span>
+                        {rec.isHighValue && (
+                          <Zap size={10} className="text-amber-500 flex-shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">
+                        {rec.best.card.shortName} · {rec.best.effectiveCPD.toFixed(1)}¢/$
+                      </p>
+                    </div>
+
+                    {/* Time */}
+                    <span className="text-[11px] text-gray-400 flex-shrink-0">
+                      {timeAgo(rec.timestamp)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Footer link */}
+            {state.history.length > 0 && (
+              <div className="border-t border-gray-100">
+                <Link
+                  href="/history"
+                  onClick={() => setShowNotifications(false)}
+                  className="block text-center py-2.5 text-xs font-semibold text-indigo-500 hover:text-indigo-700 transition-colors"
+                >
+                  View full history →
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Latest Tip Banner ───────────────────────────────────────────── */}
       {latestRec && (
