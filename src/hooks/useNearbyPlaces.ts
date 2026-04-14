@@ -14,6 +14,7 @@ export interface UseNearbyPlacesResult {
   apiError: boolean;          // Overpass unavailable — show gentle message
   searched: boolean;          // true after first query completes (success or empty)
   permissionDenied: boolean;
+  gpsCoords: { lat: number; lon: number } | null;  // last known GPS fix (null in manual mode)
   refresh: () => void;
 }
 
@@ -142,5 +143,5 @@ export function useNearbyPlaces(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, !!manualCoords]);
 
-  return { places, loading, error, apiError, searched, permissionDenied, refresh };
+  return { places, loading, error, apiError, searched, permissionDenied, gpsCoords: lastPos.current, refresh };
 }

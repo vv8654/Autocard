@@ -166,6 +166,38 @@ export function distanceLabel(meters: number): { label: string; mode: 'walk' | '
   return { label: `${(meters / 1000).toFixed(1)} km drive`, mode: 'drive' };
 }
 
+/**
+ * Returns a short human-readable label for a coordinate (neighbourhood/city level).
+ * Returns null silently on any error so callers can fall back to "Live".
+ */
+export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  try {
+    const url =
+      `https://nominatim.openstreetmap.org/reverse` +
+      `?lat=${lat}&lon=${lon}&format=json&zoom=12&addressdetails=1&countrycodes=us`;
+    const res = await fetch(url, {
+      headers: { 'Accept-Language': 'en', 'User-Agent': 'AutoCard/1.0' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as {
+      address?: {
+        neighbourhood?: string;
+        suburb?: string;
+        city?: string;
+        town?: string;
+        village?: string;
+        county?: string;
+        state?: string;
+      };
+    };
+    const a = data.address;
+    if (!a) return null;
+    return a.neighbourhood ?? a.suburb ?? a.city ?? a.town ?? a.village ?? a.county ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
   if (Notification.permission === 'granted') return 'granted';

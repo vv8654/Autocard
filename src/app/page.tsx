@@ -5,7 +5,7 @@ import { Bell, ChevronRight, Zap, X, MapPin, Loader2, Navigation } from 'lucide-
 import { useApp } from '../context/AppContext';
 import { MERCHANTS, DASHBOARD_SCENARIO_IDS } from '../data/merchants';
 import { buildContext, getRecommendation } from '../lib/recommendation';
-import { sendBrowserNotification, distanceLabel, WALK_THRESHOLD_M } from '../lib/location';
+import { sendBrowserNotification, distanceLabel, WALK_THRESHOLD_M, reverseGeocode } from '../lib/location';
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces';
 import { RecommendationModal } from '../components/RecommendationModal';
 import { BottomNav } from '../components/BottomNav';
@@ -215,13 +215,28 @@ export default function HomePage() {
   // Location-based nearby detection
   const {
     places, loading: nearbyLoading, error: nearbyError,
-    apiError: nearbyApiError, searched: nearbySearched,
+    apiError: nearbyApiError, searched: nearbySearched, gpsCoords,
   } = useNearbyPlaces(
     state.locationSettings.enabled || !!state.manualLocation,
     manualCoords,
   );
 
   const nearbyActive = state.locationSettings.enabled || !!state.manualLocation;
+
+  // Reverse-geocode GPS coords into a short label for the header pill
+  const [gpsLabel, setGpsLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!gpsCoords || state.manualLocation) return;
+    reverseGeocode(gpsCoords.lat, gpsCoords.lon).then(label => {
+      if (label) setGpsLabel(label);
+    });
+  // Only re-run when the GPS fix changes meaningfully (rounded to ~1km)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    gpsCoords ? Math.round(gpsCoords.lat * 10) / 10 : null,
+    gpsCoords ? Math.round(gpsCoords.lon * 10) / 10 : null,
+    !!state.manualLocation,
+  ]);
 
   // Precompute dashboard scenario previews
   const scenarioPreviews = useMemo(() => {
@@ -314,7 +329,9 @@ export default function HomePage() {
                 ) : (
                   <>
                     <MapPin size={10} className="text-emerald-300"/>
-                    <span className="text-emerald-300 text-[10px] font-semibold">Live</span>
+                    <span className="text-emerald-300 text-[10px] font-semibold max-w-[80px] truncate">
+                      {gpsLabel ?? 'Live'}
+                    </span>
                   </>
                 )}
               </button>
