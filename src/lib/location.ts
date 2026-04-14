@@ -1,10 +1,18 @@
 import { Category, NearbyPlace } from '../types';
 import { detectCategoryFromName } from './categoryDetect';
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-const RADIUS_METERS = 300;
+// Multiple public Overpass mirrors — tried in order until one succeeds
+const OVERPASS_MIRRORS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+];
 
-// Maps OSM amenity/shop tags → card categories
+const RADIUS_METERS  = 1000;  // 1 km — wide enough to always return results
+const FETCH_TIMEOUT  = 12_000; // 12s client-side abort
+const SERVER_TIMEOUT = 10;     // seconds, passed to Overpass
+
+// Maps OSM amenity/shop/tourism tags → card categories
 const TAG_MAP: Record<string, Category> = {
   restaurant:   'dining',
   cafe:         'dining',
@@ -40,41 +48,67 @@ interface OsmElement {
   };
 }
 
-/**
- * Query OpenStreetMap Overpass API for businesses within RADIUS_METERS
- * of the given coordinates. No API key required.
- */
-export async function fetchNearbyPlaces(lat: number, lon: number): Promise<NearbyPlace[]> {
-  const query = `[out:json][timeout:10];(
+function buildQuery(lat: number, lon: number): string {
+  return `[out:json][timeout:${SERVER_TIMEOUT}];(
 node["amenity"~"restaurant|cafe|fast_food|pharmacy|fuel|bar|pub|food_court|ice_cream|bakery"](around:${RADIUS_METERS},${lat},${lon});
 node["shop"~"supermarket|grocery|convenience|fuel|pharmacy|greengrocer"](around:${RADIUS_METERS},${lat},${lon});
 node["tourism"~"hotel|hostel|motel"](around:${RADIUS_METERS},${lat},${lon});
-);out body 12;`;
+);out body 25;`;
+}
 
-  const res = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    body: query,
-    headers: { 'Content-Type': 'text/plain' },
-  });
+/** Fetch raw OSM elements from one mirror. Returns null on any failure. */
+async function fetchFromMirror(url: string, query: string): Promise<OsmElement[] | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      body: query,
+      headers: { 'Content-Type': 'text/plain' },
+      signal: controller.signal,
+    });
+    // 429 = rate limited, 503/504 = overloaded — try next mirror
+    if (!res.ok) return null;
+    const json = await res.json() as { elements?: OsmElement[] };
+    return json.elements ?? null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-  if (!res.ok) throw new Error(`Overpass error ${res.status}`);
-  const json = await res.json() as { elements: OsmElement[] };
+/**
+ * Query Overpass API for businesses near the given coordinates.
+ * Tries multiple mirrors in sequence; returns [] (never throws) if all fail.
+ */
+export async function fetchNearbyPlaces(lat: number, lon: number): Promise<NearbyPlace[]> {
+  const query = buildQuery(lat, lon);
 
-  return json.elements
-    .filter(el => el.tags?.name || el.tags?.brand)
-    .map(el => {
-      const tags = el.tags!;
-      const name = tags.brand ?? tags.name!;
-      const osmTag = tags.amenity ?? tags.shop ?? tags.tourism ?? '';
-      const category: Category = TAG_MAP[osmTag] ?? detectCategoryFromName(name);
-      const distance = haversineMeters(lat, lon, el.lat, el.lon);
-      return { id: String(el.id), name, category, distance: Math.round(distance) };
-    })
-    .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+  for (const mirror of OVERPASS_MIRRORS) {
+    const elements = await fetchFromMirror(mirror, query);
+    if (elements === null) continue;
+
+    return elements
+      .filter(el => el.lat && el.lon && (el.tags?.name || el.tags?.brand))
+      .map(el => {
+        const tags = el.tags!;
+        const name = tags.brand ?? tags.name!;
+        const osmTag = tags.amenity ?? tags.shop ?? tags.tourism ?? '';
+        const category: Category = TAG_MAP[osmTag] ?? detectCategoryFromName(name);
+        const distance = haversineMeters(lat, lon, el.lat, el.lon);
+        return { id: String(el.id), name, category, distance: Math.round(distance) };
+      })
+      .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0))
+      .slice(0, 12);
+  }
+
+  // All mirrors failed — return empty rather than throwing
+  return [];
 }
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
+  const R = 6_371_000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -97,7 +131,6 @@ export function sendBrowserNotification(title: string, body: string): void {
   if (typeof window === 'undefined') return;
   if (Notification.permission !== 'granted') return;
   try {
-    // renotify: true replaces the previous AutoCard notification
     new Notification(title, { body, tag: 'autocard' });
   } catch {
     // Some browsers block notifications in certain contexts — ignore

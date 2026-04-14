@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { NearbyPlace } from '../types';
 import { fetchNearbyPlaces } from '../lib/location';
 
-const MIN_INTERVAL_MS  = 90_000; // minimum 90s between Overpass fetches
-const MIN_MOVE_METERS  = 40;     // re-fetch only if moved > 40m
+const MIN_INTERVAL_MS = 90_000; // minimum 90s between Overpass fetches
+const MIN_MOVE_METERS = 40;     // re-fetch only if moved > 40m
 
 interface UseNearbyPlacesResult {
   places: NearbyPlace[];
@@ -21,40 +21,39 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
   const [error, setError]             = useState<string | null>(null);
   const [permissionDenied, setDenied] = useState(false);
 
-  const lastFetchAt  = useRef(0);
-  const lastPos      = useRef<{ lat: number; lon: number } | null>(null);
-  const watchIdRef   = useRef<number | null>(null);
+  const lastFetchAt = useRef(0);
+  const lastPos     = useRef<{ lat: number; lon: number } | null>(null);
+  const watchIdRef  = useRef<number | null>(null);
 
   async function doFetch(lat: number, lon: number) {
     setLoading(true);
     setError(null);
     try {
+      // fetchNearbyPlaces never throws — returns [] on API failure
       const results = await fetchNearbyPlaces(lat, lon);
       setPlaces(results);
-    } catch {
-      setError('Could not load nearby places. Check your connection.');
+      // No error shown when results are empty — just no banner
     } finally {
       setLoading(false);
     }
   }
 
   function refresh() {
-    // Force a fresh fetch using the last known position
     if (lastPos.current) {
-      lastFetchAt.current = 0; // reset throttle
+      lastFetchAt.current = 0;
       doFetch(lastPos.current.lat, lastPos.current.lon);
     }
   }
 
   useEffect(() => {
     if (!enabled) {
-      // Clean up when disabled
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
       setPlaces([]);
       setError(null);
+      setDenied(false);
       return;
     }
 
@@ -67,14 +66,13 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
       const { latitude: lat, longitude: lon } = pos.coords;
       const now = Date.now();
 
-      // Throttle: skip if we haven't moved enough AND fetched recently
       if (lastPos.current) {
         const moved =
           Math.hypot(lat - lastPos.current.lat, lon - lastPos.current.lon) * 111_000;
         if (moved < MIN_MOVE_METERS && now - lastFetchAt.current < MIN_INTERVAL_MS) return;
       }
 
-      lastPos.current  = { lat, lon };
+      lastPos.current     = { lat, lon };
       lastFetchAt.current = now;
       doFetch(lat, lon);
     };
@@ -83,15 +81,18 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
       if (err.code === err.PERMISSION_DENIED) {
         setDenied(true);
         setError('Location access denied. Enable it in your browser settings.');
+      } else if (err.code === err.TIMEOUT) {
+        setError('Getting your location is taking a while. Move to an open area and try again.');
       } else {
         setError('Could not get your location. Try again.');
       }
+      setLoading(false);
     };
 
     watchIdRef.current = navigator.geolocation.watchPosition(onPosition, onError, {
       enableHighAccuracy: true,
-      maximumAge: 20_000,
-      timeout: 15_000,
+      maximumAge: 30_000,  // accept cached position up to 30s old
+      timeout: 20_000,     // give GPS 20s to get a fix
     });
 
     return () => {
