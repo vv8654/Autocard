@@ -4,21 +4,25 @@ import { useState, useEffect, useRef } from 'react';
 import { NearbyPlace } from '../types';
 import { fetchNearbyPlaces } from '../lib/location';
 
-const MIN_INTERVAL_MS = 90_000; // minimum 90s between Overpass fetches
-const MIN_MOVE_METERS = 40;     // re-fetch only if moved > 40m
+const MIN_INTERVAL_MS = 90_000;
+const MIN_MOVE_METERS = 40;
 
-interface UseNearbyPlacesResult {
+export interface UseNearbyPlacesResult {
   places: NearbyPlace[];
   loading: boolean;
-  error: string | null;
+  error: string | null;       // GPS-level errors (permission denied, timeout)
+  apiError: boolean;          // Overpass unavailable — show gentle message
+  searched: boolean;          // true after first query completes (success or empty)
   permissionDenied: boolean;
   refresh: () => void;
 }
 
 export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
-  const [places, setPlaces]           = useState<NearbyPlace[]>([]);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [places, setPlaces]         = useState<NearbyPlace[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [apiError, setApiError]     = useState(false);
+  const [searched, setSearched]     = useState(false);
   const [permissionDenied, setDenied] = useState(false);
 
   const lastFetchAt = useRef(0);
@@ -28,13 +32,19 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
   async function doFetch(lat: number, lon: number) {
     setLoading(true);
     setError(null);
+    setApiError(false);
     try {
-      // fetchNearbyPlaces never throws — returns [] on API failure
       const results = await fetchNearbyPlaces(lat, lon);
       setPlaces(results);
-      // No error shown when results are empty — just no banner
+    } catch (err) {
+      if (err instanceof Error && err.message === 'OVERPASS_UNAVAILABLE') {
+        setApiError(true);
+        setPlaces([]);
+      }
+      // Other unexpected errors: stay silent, keep old places
     } finally {
       setLoading(false);
+      setSearched(true);
     }
   }
 
@@ -53,6 +63,8 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
       }
       setPlaces([]);
       setError(null);
+      setApiError(false);
+      setSearched(false);
       setDenied(false);
       return;
     }
@@ -82,7 +94,7 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
         setDenied(true);
         setError('Location access denied. Enable it in your browser settings.');
       } else if (err.code === err.TIMEOUT) {
-        setError('Getting your location is taking a while. Move to an open area and try again.');
+        setError('Getting your location is taking a while. Try moving to an open area.');
       } else {
         setError('Could not get your location. Try again.');
       }
@@ -91,8 +103,8 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
 
     watchIdRef.current = navigator.geolocation.watchPosition(onPosition, onError, {
       enableHighAccuracy: true,
-      maximumAge: 30_000,  // accept cached position up to 30s old
-      timeout: 20_000,     // give GPS 20s to get a fix
+      maximumAge: 30_000,
+      timeout: 20_000,
     });
 
     return () => {
@@ -103,5 +115,5 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
     };
   }, [enabled]);
 
-  return { places, loading, error, permissionDenied, refresh };
+  return { places, loading, error, apiError, searched, permissionDenied, refresh };
 }

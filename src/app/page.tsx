@@ -97,11 +97,14 @@ function NearbyPlaceRow({
 const MAX_NEARBY = 6;
 
 function NearbyAlert({
-  places, loading, error, onTap, enabledCards, bonuses, redemptionStyle,
+  places, loading, error, apiError, searched,
+  onTap, enabledCards, bonuses, redemptionStyle,
 }: {
   places: NearbyPlace[];
   loading: boolean;
   error: string | null;
+  apiError: boolean;
+  searched: boolean;
   onTap: (place: NearbyPlace) => void;
   enabledCards: CreditCard[];
   bonuses: Bonus[];
@@ -126,7 +129,28 @@ function NearbyAlert({
     );
   }
 
-  if (dismissed || places.length === 0) return null;
+  if (apiError) {
+    return (
+      <div className="mx-4 mt-4 p-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center gap-2">
+        <MapPin size={13} className="text-gray-300 flex-shrink-0"/>
+        <p className="text-xs text-gray-400">Business data temporarily unavailable — try again in a moment.</p>
+      </div>
+    );
+  }
+
+  if (dismissed) return null;
+
+  // Search completed but nothing found nearby
+  if (searched && places.length === 0) {
+    return (
+      <div className="mx-4 mt-4 p-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center gap-2">
+        <MapPin size={13} className="text-gray-300 flex-shrink-0"/>
+        <p className="text-xs text-gray-400">No businesses found within walking distance.</p>
+      </div>
+    );
+  }
+
+  if (places.length === 0) return null;
 
   const visible = places.slice(0, MAX_NEARBY);
 
@@ -173,9 +197,10 @@ export default function HomePage() {
   const [showNotifications,  setShowNotifications]  = useState(false);
 
   // Location-based nearby detection
-  const { places, loading: nearbyLoading, error: nearbyError } = useNearbyPlaces(
-    state.locationSettings.enabled,
-  );
+  const {
+    places, loading: nearbyLoading, error: nearbyError,
+    apiError: nearbyApiError, searched: nearbySearched,
+  } = useNearbyPlaces(state.locationSettings.enabled);
 
   // Precompute dashboard scenario previews
   const scenarioPreviews = useMemo(() => {
@@ -365,6 +390,8 @@ export default function HomePage() {
           places={places}
           loading={nearbyLoading}
           error={nearbyError}
+          apiError={nearbyApiError}
+          searched={nearbySearched}
           onTap={handleNearbyTap}
           enabledCards={enabledCards}
           bonuses={state.bonuses}
