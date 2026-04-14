@@ -17,7 +17,14 @@ export interface UseNearbyPlacesResult {
   refresh: () => void;
 }
 
-export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
+/**
+ * @param enabled  - whether location is active at all
+ * @param manualCoords - when set, bypass GPS and use these coords directly
+ */
+export function useNearbyPlaces(
+  enabled: boolean,
+  manualCoords?: { lat: number; lon: number },
+): UseNearbyPlacesResult {
   const [places, setPlaces]         = useState<NearbyPlace[]>([]);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
@@ -49,13 +56,32 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
   }
 
   function refresh() {
-    if (lastPos.current) {
+    const coords = manualCoords ?? lastPos.current;
+    if (coords) {
       lastFetchAt.current = 0;
-      doFetch(lastPos.current.lat, lastPos.current.lon);
+      doFetch(coords.lat, coords.lon);
     }
   }
 
+  // ── Manual coords mode ────────────────────────────────────────────────────
   useEffect(() => {
+    if (!enabled || !manualCoords) return;
+
+    // Stop any active GPS watch — manual takes over
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+
+    setSearched(false);
+    doFetch(manualCoords.lat, manualCoords.lon);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, manualCoords?.lat, manualCoords?.lon]);
+
+  // ── GPS mode (only when no manual coords) ────────────────────────────────
+  useEffect(() => {
+    if (manualCoords) return; // manual mode handled above
+
     if (!enabled) {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
@@ -113,7 +139,8 @@ export function useNearbyPlaces(enabled: boolean): UseNearbyPlacesResult {
         watchIdRef.current = null;
       }
     };
-  }, [enabled]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, !!manualCoords]);
 
   return { places, loading, error, apiError, searched, permissionDenied, refresh };
 }

@@ -2,8 +2,8 @@
 
 import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react';
 import {
-  AppState, Bonus, CreditCard, LocationSettings, NotificationSettings,
-  RedemptionStyle, Recommendation,
+  AppState, Bonus, CreditCard, LocationSettings, ManualLocation,
+  NotificationSettings, RedemptionStyle, Recommendation,
 } from '../types';
 import { loadState, saveState } from '../lib/storage';
 import { CARDS, PRESET_BONUSES } from '../data/cards';
@@ -19,6 +19,7 @@ interface AppContextValue {
   activateBonus:              (cardId: string) => void;
   deactivateBonus:            (cardId: string) => void;
   updateBonusSpend:           (cardId: string, amount: number) => void;
+  setManualLocation:          (loc: ManualLocation | null) => void;
   clearHistory:               () => void;
 }
 
@@ -115,6 +116,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState(prev => ({ ...prev, history: [] }));
   }
 
+  function setManualLocation(loc: ManualLocation | null) {
+    setState(prev => ({ ...prev, manualLocation: loc }));
+  }
+
   return (
     <AppContext.Provider value={{
       state, enabledCards,
@@ -122,6 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateNotificationSettings, updateLocationSettings,
       updateRedemptionStyle,
       activateBonus, deactivateBonus, updateBonusSpend,
+      setManualLocation,
       clearHistory,
     }}>
       {children}

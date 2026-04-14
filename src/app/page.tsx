@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Bell, ChevronRight, Zap, X, MapPin, Loader2 } from 'lucide-react';
+import { Bell, ChevronRight, Zap, X, MapPin, Loader2, Navigation } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { MERCHANTS, DASHBOARD_SCENARIO_IDS } from '../data/merchants';
 import { buildContext, getRecommendation } from '../lib/recommendation';
@@ -10,6 +10,7 @@ import { useNearbyPlaces } from '../hooks/useNearbyPlaces';
 import { RecommendationModal } from '../components/RecommendationModal';
 import { BottomNav } from '../components/BottomNav';
 import { RotatingCategoryBanner } from '../components/RotatingCategoryBanner';
+import { LocationPicker } from '../components/LocationPicker';
 import { Bonus, CreditCard, Merchant, NearbyPlace, Recommendation, RedemptionStyle } from '../types';
 import Link from 'next/link';
 
@@ -192,15 +193,26 @@ function NearbyAlert({
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const { enabledCards, addToHistory, state } = useApp();
+  const { enabledCards, addToHistory, state, setManualLocation } = useApp();
   const [activeRec,          setActiveRec]          = useState<Recommendation | null>(null);
   const [showNotifications,  setShowNotifications]  = useState(false);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+
+  // Derive effective coords: manual pin takes priority over GPS
+  const manualCoords = state.manualLocation
+    ? { lat: state.manualLocation.lat, lon: state.manualLocation.lon }
+    : undefined;
 
   // Location-based nearby detection
   const {
     places, loading: nearbyLoading, error: nearbyError,
     apiError: nearbyApiError, searched: nearbySearched,
-  } = useNearbyPlaces(state.locationSettings.enabled);
+  } = useNearbyPlaces(
+    state.locationSettings.enabled || !!state.manualLocation,
+    manualCoords,
+  );
+
+  const nearbyActive = state.locationSettings.enabled || !!state.manualLocation;
 
   // Precompute dashboard scenario previews
   const scenarioPreviews = useMemo(() => {
@@ -277,11 +289,36 @@ export default function HomePage() {
             <p className="text-indigo-200 text-sm mt-1">Right card. Right moment.</p>
           </div>
           <div className="flex items-center gap-2">
-            {state.locationSettings.enabled && (
-              <div className="flex items-center gap-1 bg-white/10 rounded-full px-2 py-1">
-                <MapPin size={11} className="text-emerald-300"/>
-                <span className="text-emerald-300 text-[10px] font-semibold">Live</span>
-              </div>
+            {/* Location pill — tappable to open picker */}
+            {nearbyActive && (
+              <button
+                onClick={() => setShowLocationPicker(true)}
+                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full px-2 py-1 transition-colors"
+              >
+                {state.manualLocation ? (
+                  <>
+                    <Navigation size={10} className="text-sky-300"/>
+                    <span className="text-sky-300 text-[10px] font-semibold max-w-[80px] truncate">
+                      {state.manualLocation.label}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <MapPin size={10} className="text-emerald-300"/>
+                    <span className="text-emerald-300 text-[10px] font-semibold">Live</span>
+                  </>
+                )}
+              </button>
+            )}
+            {!nearbyActive && (
+              <button
+                onClick={() => setShowLocationPicker(true)}
+                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 rounded-full px-2 py-1 transition-colors"
+                title="Set manual location"
+              >
+                <MapPin size={10} className="text-indigo-300"/>
+                <span className="text-indigo-300 text-[10px] font-semibold">Pin</span>
+              </button>
             )}
             <button
               onClick={() => setShowNotifications(prev => !prev)}
@@ -384,8 +421,8 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Nearby Alert (location-based) ────────────────────────────────── */}
-      {state.locationSettings.enabled && (
+      {/* ── Nearby Alert (location-based or manual pin) ──────────────────── */}
+      {nearbyActive && (
         <NearbyAlert
           places={places}
           loading={nearbyLoading}
@@ -462,20 +499,39 @@ export default function HomePage() {
         )}
 
         {/* Location CTA if not enabled */}
-        {!state.locationSettings.enabled && (
-          <Link href="/settings"
-            className="flex items-center gap-3 mt-4 p-4 bg-gray-50 border border-dashed border-gray-200 rounded-2xl hover:border-indigo-300 hover:bg-indigo-50/40 transition-all">
-            <MapPin size={18} className="text-gray-400"/>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-600">Enable nearby detection</p>
-              <p className="text-xs text-gray-400">Get proactive tips based on your real location</p>
-            </div>
-            <ChevronRight size={14} className="text-gray-300"/>
-          </Link>
+        {!nearbyActive && (
+          <div className="flex gap-2 mt-4">
+            <Link href="/settings"
+              className="flex-1 flex items-center gap-3 p-4 bg-gray-50 border border-dashed border-gray-200 rounded-2xl hover:border-indigo-300 hover:bg-indigo-50/40 transition-all">
+              <MapPin size={18} className="text-gray-400"/>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-600">Enable GPS detection</p>
+                <p className="text-xs text-gray-400">Auto nearby tips</p>
+              </div>
+            </Link>
+            <button
+              onClick={() => setShowLocationPicker(true)}
+              className="flex items-center gap-2 px-4 py-4 bg-gray-50 border border-dashed border-gray-200 rounded-2xl hover:border-sky-300 hover:bg-sky-50/40 transition-all"
+            >
+              <Navigation size={16} className="text-gray-400"/>
+              <span className="text-sm font-semibold text-gray-600 whitespace-nowrap">Pin location</span>
+            </button>
+          </div>
         )}
       </div>
 
       <RecommendationModal recommendation={activeRec} onClose={() => setActiveRec(null)}/>
+
+      {/* ── Location Picker sheet ─────────────────────────────────────────── */}
+      {showLocationPicker && (
+        <LocationPicker
+          current={state.manualLocation}
+          onSelect={loc => setManualLocation(loc)}
+          onClear={() => setManualLocation(null)}
+          onClose={() => setShowLocationPicker(false)}
+        />
+      )}
+
       <BottomNav/>
     </div>
   );

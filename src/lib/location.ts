@@ -54,14 +54,11 @@ function buildQuery(lat: number, lon: number): string {
   const amenity = 'restaurant|cafe|fast_food|pharmacy|fuel|bar|pub|food_court|ice_cream|bakery';
   const shop    = 'supermarket|grocery|convenience|fuel|pharmacy|greengrocer';
   const tourism = 'hotel|hostel|motel';
-  // Query both node (point) and way (building outline) — many chain stores are ways
+  // nwr = node + way + relation in one line; catches points, building outlines, and POI relations
   return `[out:json][timeout:${SERVER_TIMEOUT}];(
-node["amenity"~"${amenity}"](${around});
-way["amenity"~"${amenity}"](${around});
-node["shop"~"${shop}"](${around});
-way["shop"~"${shop}"](${around});
-node["tourism"~"${tourism}"](${around});
-way["tourism"~"${tourism}"](${around});
+nwr["amenity"~"${amenity}"](${around});
+nwr["shop"~"${shop}"](${around});
+nwr["tourism"~"${tourism}"](${around});
 );out body center 30;`;
 }
 

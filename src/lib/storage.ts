@@ -1,4 +1,4 @@
-import { AppState, Bonus, NotificationSettings, LocationSettings, RedemptionStyle } from '../types';
+import { AppState, Bonus, NotificationSettings, LocationSettings, ManualLocation, RedemptionStyle } from '../types';
 import { DEFAULT_ENABLED_CARD_IDS } from '../data/cards';
 
 const STORAGE_KEY = 'autocard_v2';
@@ -17,11 +17,11 @@ const DEFAULT_LOCATION_SETTINGS: LocationSettings = {
 
 const DEFAULT_REDEMPTION_STYLE: RedemptionStyle = 'balanced';
 const DEFAULT_BONUSES: Bonus[] = [];
+const DEFAULT_MANUAL_LOCATION: ManualLocation | null = null;
 
 export function loadState(): AppState {
   if (typeof window === 'undefined') return defaultState();
   try {
-    // Try v2 first
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<AppState>;
@@ -32,9 +32,10 @@ export function loadState(): AppState {
         history:              parsed.history              ?? [],
         bonuses:              parsed.bonuses              ?? DEFAULT_BONUSES,
         redemptionStyle:      parsed.redemptionStyle      ?? DEFAULT_REDEMPTION_STYLE,
+        manualLocation:       parsed.manualLocation       ?? DEFAULT_MANUAL_LOCATION,
       };
     }
-    // Migrate from v1 if present
+    // Migrate from v1
     const v1Raw = localStorage.getItem('autocard_v1');
     if (v1Raw) {
       const v1 = JSON.parse(v1Raw) as Partial<AppState>;
@@ -45,6 +46,7 @@ export function loadState(): AppState {
         history:              v1.history              ?? [],
         bonuses:              DEFAULT_BONUSES,
         redemptionStyle:      DEFAULT_REDEMPTION_STYLE,
+        manualLocation:       DEFAULT_MANUAL_LOCATION,
       };
     }
     return defaultState();
@@ -66,5 +68,6 @@ function defaultState(): AppState {
     history:              [],
     bonuses:              DEFAULT_BONUSES,
     redemptionStyle:      DEFAULT_REDEMPTION_STYLE,
+    manualLocation:       DEFAULT_MANUAL_LOCATION,
   };
 }

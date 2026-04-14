@@ -96,6 +96,12 @@ export interface Bonus {
   active: boolean;
 }
 
+export interface ManualLocation {
+  lat: number;
+  lon: number;
+  label: string; // human-readable place name shown in the UI
+}
+
 export type NotificationFrequency = 'all' | 'high-value' | 'off';
 
 export interface NotificationSettings {
@@ -124,6 +130,7 @@ export interface AppState {
   history: Recommendation[];
   bonuses: Bonus[];
   redemptionStyle: RedemptionStyle;
+  manualLocation: ManualLocation | null;
 }
 
 // ── Feature: Rotating Category Countdown ────────────────────────────────────
