@@ -8,7 +8,7 @@ const OVERPASS_MIRRORS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-const RADIUS_METERS  = 1000;  // 1 km — wide enough to always return results
+const RADIUS_METERS  = 800;   // ~10 min walk — wide enough to return results, close enough to be useful
 const FETCH_TIMEOUT  = 12_000; // 12s client-side abort
 const SERVER_TIMEOUT = 10;     // seconds, passed to Overpass
 

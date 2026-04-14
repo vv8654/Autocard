@@ -10,7 +10,7 @@ import { useNearbyPlaces } from '../hooks/useNearbyPlaces';
 import { RecommendationModal } from '../components/RecommendationModal';
 import { BottomNav } from '../components/BottomNav';
 import { RotatingCategoryBanner } from '../components/RotatingCategoryBanner';
-import { Merchant, NearbyPlace, Recommendation } from '../types';
+import { Bonus, CreditCard, Merchant, NearbyPlace, Recommendation, RedemptionStyle } from '../types';
 import Link from 'next/link';
 
 const DASHBOARD_MERCHANTS = DASHBOARD_SCENARIO_IDS
@@ -25,62 +25,142 @@ function timeAgo(isoString: string): string {
   return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ── Nearby alert banner ───────────────────────────────────────────────────────
+// ── Category emoji map ────────────────────────────────────────────────────────
+
+const CAT_EMOJI: Record<string, string> = {
+  dining: '🍽️', grocery: '🛒', gas: '⛽', travel: '✈️',
+  transit: '🚗', pharmacy: '💊', streaming: '🎬', online: '📦', general: '🏪',
+};
+
+// ── Single nearby place row ───────────────────────────────────────────────────
+
+function NearbyPlaceRow({
+  place, onTap, enabledCards, bonuses, redemptionStyle,
+}: {
+  place: NearbyPlace;
+  onTap: (place: NearbyPlace) => void;
+  enabledCards: CreditCard[];
+  bonuses: Bonus[];
+  redemptionStyle: RedemptionStyle;
+}) {
+  const rec = (() => {
+    if (enabledCards.length === 0) return null;
+    const merchant: Merchant = {
+      id: place.id, name: place.name, displayName: place.name,
+      category: place.category, emoji: CAT_EMOJI[place.category] ?? '🏪',
+      scenarioLabel: place.category,
+    };
+    try {
+      return getRecommendation(
+        { merchantId: place.id, merchant, estimatedAmount: 50 },
+        enabledCards, bonuses, redemptionStyle,
+      );
+    } catch { return null; }
+  })();
+
+  const distLabel = (place.distance ?? 0) < 1000
+    ? `${place.distance}m`
+    : `${((place.distance ?? 0) / 1000).toFixed(1)}km`;
+
+  return (
+    <button
+      onClick={() => onTap(place)}
+      className="w-full flex items-center gap-3 px-3.5 py-3 bg-white rounded-2xl border border-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-[0.98] transition-all text-left"
+    >
+      <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center text-lg flex-shrink-0">
+        {CAT_EMOJI[place.category] ?? '🏪'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-gray-900 truncate">{place.name}</p>
+        <p className="text-xs text-gray-500 capitalize">{place.category} · {distLabel} away</p>
+      </div>
+      {rec && (
+        <div className="flex-shrink-0 text-right">
+          <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            rec.isHighValue ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {rec.isHighValue && <span className="mr-0.5">⚡</span>}
+            {rec.best.effectiveCPD.toFixed(1)}¢/$
+          </div>
+          <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[72px]">
+            {rec.best.card.shortName}
+          </p>
+        </div>
+      )}
+      <ChevronRight size={14} className="text-emerald-300 flex-shrink-0"/>
+    </button>
+  );
+}
+
+// ── Nearby section ────────────────────────────────────────────────────────────
+
+const MAX_NEARBY = 6;
 
 function NearbyAlert({
-  places,
-  loading,
-  error,
-  onTap,
+  places, loading, error, onTap, enabledCards, bonuses, redemptionStyle,
 }: {
   places: NearbyPlace[];
   loading: boolean;
   error: string | null;
   onTap: (place: NearbyPlace) => void;
+  enabledCards: CreditCard[];
+  bonuses: Bonus[];
+  redemptionStyle: RedemptionStyle;
 }) {
-  const [dismissed, setDismissed] = useState<string | null>(null);
-  const topPlace = places[0];
+  const [dismissed, setDismissed] = useState(false);
 
   if (loading) {
     return (
-      <div className="mx-4 mt-4 p-3 bg-blue-50 border border-blue-100 rounded-2xl flex items-center gap-2">
-        <Loader2 size={14} className="text-blue-400 animate-spin flex-shrink-0"/>
-        <p className="text-xs text-blue-600 font-medium">Scanning nearby businesses…</p>
+      <div className="mx-4 mt-4 p-3 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-2">
+        <Loader2 size={14} className="text-emerald-400 animate-spin flex-shrink-0"/>
+        <p className="text-xs text-emerald-600 font-medium">Scanning nearby businesses…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-100 rounded-2xl">
-        <p className="text-xs text-red-500">{error}</p>
+      <div className="mx-4 mt-4 p-3 bg-amber-50 border border-amber-100 rounded-2xl">
+        <p className="text-xs text-amber-600">{error}</p>
       </div>
     );
   }
 
-  if (!topPlace || topPlace.id === dismissed) return null;
+  if (dismissed || places.length === 0) return null;
+
+  const visible = places.slice(0, MAX_NEARBY);
 
   return (
     <div className="mx-4 mt-4">
-      <button
-        onClick={() => onTap(topPlace)}
-        className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl text-left hover:shadow-md transition-all"
-      >
-        <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
-          <MapPin size={16} className="text-emerald-600"/>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] uppercase tracking-widest font-bold text-emerald-600">📍 Nearby</p>
-          <p className="text-sm font-bold text-gray-900 truncate">{topPlace.name}</p>
-          <p className="text-xs text-gray-500 capitalize">{topPlace.category} · {topPlace.distance}m away · Tap for best card</p>
+      {/* Section header */}
+      <div className="flex items-center justify-between mb-2 px-0.5">
+        <div className="flex items-center gap-1.5">
+          <MapPin size={13} className="text-emerald-500"/>
+          <p className="text-[11px] uppercase tracking-widest font-bold text-emerald-600">
+            {visible.length} nearby · walking distance
+          </p>
         </div>
         <button
-          onClick={e => { e.stopPropagation(); setDismissed(topPlace.id); }}
-          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-emerald-100 text-gray-400 flex-shrink-0"
+          onClick={() => setDismissed(true)}
+          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
         >
           <X size={13}/>
         </button>
-      </button>
+      </div>
+
+      {/* Place rows */}
+      <div className="space-y-2">
+        {visible.map(place => (
+          <NearbyPlaceRow
+            key={place.id}
+            place={place}
+            onTap={onTap}
+            enabledCards={enabledCards}
+            bonuses={bonuses}
+            redemptionStyle={redemptionStyle}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -286,6 +366,9 @@ export default function HomePage() {
           loading={nearbyLoading}
           error={nearbyError}
           onTap={handleNearbyTap}
+          enabledCards={enabledCards}
+          bonuses={state.bonuses}
+          redemptionStyle={state.redemptionStyle}
         />
       )}
 
