@@ -13,24 +13,24 @@ export type Category =
 
 export interface RewardRate {
   category: Category;
-  multiplier: number;    // e.g. 4 = 4x points / 4% cash back
-  capAmount?: number;    // monthly spend cap in dollars (undefined = no cap)
-  notes?: string;        // e.g. "US supermarkets only, up to $25k/yr"
+  multiplier: number;
+  capAmount?: number;
+  notes?: string;
 }
 
 export interface CreditCard {
   id: string;
-  name: string;          // Full formal name
-  shortName: string;     // UI display name
+  name: string;
+  shortName: string;
   issuer: string;
   network: 'Visa' | 'Mastercard' | 'Amex' | 'Discover';
-  gradient: string;      // Tailwind bg-gradient-to-br classes
-  lastFour: string;      // Mock last 4 digits
+  gradient: string;
+  lastFour: string;
   annualFee: number;
-  pointsName: string;    // "Membership Rewards pts" | "miles" | "% cash back"
-  pointValue: number;    // Estimated cents per point (for apples-to-apples CPD calc)
-  baseMultiplier: number; // Catch-all earn rate (all other purchases)
-  keyBenefit: string;    // One-liner shown in Wallet
+  pointsName: string;
+  pointValue: number;
+  baseMultiplier: number;
+  keyBenefit: string;
   rewards: RewardRate[];
 }
 
@@ -40,21 +40,21 @@ export interface Merchant {
   displayName: string;
   category: Category;
   emoji: string;
-  scenarioLabel: string; // e.g. "Dining"
+  scenarioLabel: string;
 }
 
 export interface PurchaseContext {
   merchantId: string;
   merchant: Merchant;
-  estimatedAmount: number; // default $50
+  estimatedAmount: number;
 }
 
 export interface RankedCard {
   card: CreditCard;
   multiplier: number;
-  effectiveCPD: number;  // cents per dollar earned
+  effectiveCPD: number;
   rank: number;
-  note?: string;         // e.g. "Rotating category this quarter"
+  note?: string;
 }
 
 export interface Recommendation {
@@ -63,8 +63,8 @@ export interface Recommendation {
   best: RankedCard;
   alternatives: RankedCard[];
   explanation: string;
-  timestamp: string;     // ISO string (serializable)
-  isHighValue: boolean;  // true when best CPD >= 5¢
+  timestamp: string;
+  isHighValue: boolean;
 }
 
 export type NotificationFrequency = 'all' | 'high-value' | 'off';
@@ -72,11 +72,25 @@ export type NotificationFrequency = 'all' | 'high-value' | 'off';
 export interface NotificationSettings {
   frequency: NotificationFrequency;
   enabledCategories: Category[];
-  highValueThreshold: number; // CPD threshold for "high-value" mode
+  highValueThreshold: number;
+}
+
+export interface LocationSettings {
+  enabled: boolean;
+  notifyNearby: boolean;       // show banner/notification for nearby high-value spots
+  browserNotifications: boolean; // Web Notifications API permission granted
+}
+
+export interface NearbyPlace {
+  id: string;
+  name: string;
+  category: Category;
+  distance?: number; // meters
 }
 
 export interface AppState {
   enabledCardIds: string[];
   notificationSettings: NotificationSettings;
+  locationSettings: LocationSettings;
   history: Recommendation[];
 }

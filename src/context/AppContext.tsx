@@ -1,25 +1,18 @@
 'use client';
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-  useMemo,
-} from 'react';
-import { AppState, Recommendation, NotificationSettings } from '../types';
+import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react';
+import { AppState, Recommendation, NotificationSettings, LocationSettings, CreditCard } from '../types';
 import { loadState, saveState } from '../lib/storage';
 import { CARDS } from '../data/cards';
-import { CreditCard } from '../types';
 
 interface AppContextValue {
   state: AppState;
   enabledCards: CreditCard[];
-  toggleCard: (cardId: string) => void;
-  addToHistory: (rec: Recommendation) => void;
-  updateNotificationSettings: (s: NotificationSettings) => void;
-  clearHistory: () => void;
+  toggleCard:                    (id: string) => void;
+  addToHistory:                  (rec: Recommendation) => void;
+  updateNotificationSettings:    (s: NotificationSettings) => void;
+  updateLocationSettings:        (s: LocationSettings) => void;
+  clearHistory:                  () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -27,34 +20,32 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadState());
 
-  // Persist to localStorage whenever state changes
-  useEffect(() => {
-    saveState(state);
-  }, [state]);
+  useEffect(() => { saveState(state); }, [state]);
 
   const enabledCards = useMemo(
     () => CARDS.filter(c => state.enabledCardIds.includes(c.id)),
-    [state.enabledCardIds]
+    [state.enabledCardIds],
   );
 
-  function toggleCard(cardId: string) {
+  function toggleCard(id: string) {
     setState(prev => ({
       ...prev,
-      enabledCardIds: prev.enabledCardIds.includes(cardId)
-        ? prev.enabledCardIds.filter(id => id !== cardId)
-        : [...prev.enabledCardIds, cardId],
+      enabledCardIds: prev.enabledCardIds.includes(id)
+        ? prev.enabledCardIds.filter(x => x !== id)
+        : [...prev.enabledCardIds, id],
     }));
   }
 
   function addToHistory(rec: Recommendation) {
-    setState(prev => ({
-      ...prev,
-      history: [rec, ...prev.history].slice(0, 20), // cap at 20 entries
-    }));
+    setState(prev => ({ ...prev, history: [rec, ...prev.history].slice(0, 20) }));
   }
 
   function updateNotificationSettings(s: NotificationSettings) {
     setState(prev => ({ ...prev, notificationSettings: s }));
+  }
+
+  function updateLocationSettings(s: LocationSettings) {
+    setState(prev => ({ ...prev, locationSettings: s }));
   }
 
   function clearHistory() {
@@ -62,16 +53,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppContext.Provider
-      value={{
-        state,
-        enabledCards,
-        toggleCard,
-        addToHistory,
-        updateNotificationSettings,
-        clearHistory,
-      }}
-    >
+    <AppContext.Provider value={{
+      state, enabledCards,
+      toggleCard, addToHistory,
+      updateNotificationSettings, updateLocationSettings,
+      clearHistory,
+    }}>
       {children}
     </AppContext.Provider>
   );
@@ -79,6 +66,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 export function useApp(): AppContextValue {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used inside <AppProvider>');
+  if (!ctx) throw new Error('useApp must be inside <AppProvider>');
   return ctx;
 }

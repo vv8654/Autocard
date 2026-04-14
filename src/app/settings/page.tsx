@@ -1,20 +1,10 @@
 'use client';
 
-/**
- * Settings Page — Iteration 3
- *
- * Before: No settings at all. Every simulated scenario triggered a recommendation.
- * After:  Users can control notification frequency (all / high-value only / off)
- *         and choose which spending categories they care about.
- *
- * Why it matters: Notification fatigue is a top product risk. This screen lets
- * users tune their experience without disabling the app entirely.
- */
-
-import { Bell, BellOff, Zap } from 'lucide-react';
+import { Bell, BellOff, Zap, MapPin, MapPinOff } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Category, NotificationFrequency } from '../../types';
 import { BottomNav } from '../../components/BottomNav';
+import { requestNotificationPermission } from '../../lib/location';
 
 const FREQUENCY_OPTIONS: {
   value: NotificationFrequency;
@@ -22,24 +12,9 @@ const FREQUENCY_OPTIONS: {
   description: string;
   Icon: React.ElementType;
 }[] = [
-  {
-    value: 'all',
-    label: 'All Recommendations',
-    description: 'Get a recommendation every time you simulate a purchase',
-    Icon: Bell,
-  },
-  {
-    value: 'high-value',
-    label: 'High Value Only',
-    description: 'Only show recommendations where you can earn 5¢+ per dollar',
-    Icon: Zap,
-  },
-  {
-    value: 'off',
-    label: 'Off',
-    description: 'Disable recommendations — browse cards manually',
-    Icon: BellOff,
-  },
+  { value: 'all',        label: 'All Recommendations',  description: 'Get a tip every time you simulate a purchase',               Icon: Bell    },
+  { value: 'high-value', label: 'High Value Only',       description: 'Only when you can earn 5¢+ per dollar — the big moments',    Icon: Zap     },
+  { value: 'off',        label: 'Off',                   description: 'No tips — browse cards and search manually',                  Icon: BellOff },
 ];
 
 const CATEGORY_OPTIONS: { id: Category; label: string; emoji: string }[] = [
@@ -50,22 +25,46 @@ const CATEGORY_OPTIONS: { id: Category; label: string; emoji: string }[] = [
   { id: 'pharmacy',  label: 'Pharmacy',            emoji: '💊' },
   { id: 'streaming', label: 'Streaming',           emoji: '🎬' },
   { id: 'gas',       label: 'Gas',                 emoji: '⛽' },
+  { id: 'online',    label: 'Online Shopping',     emoji: '📦' },
 ];
 
 export default function SettingsPage() {
-  const { state, updateNotificationSettings } = useApp();
-  const { notificationSettings: settings } = state;
+  const { state, updateNotificationSettings, updateLocationSettings } = useApp();
+  const { notificationSettings: ns, locationSettings: ls } = state;
 
   function setFrequency(frequency: NotificationFrequency) {
-    updateNotificationSettings({ ...settings, frequency });
+    updateNotificationSettings({ ...ns, frequency });
   }
 
   function toggleCategory(category: Category) {
-    const current = settings.enabledCategories;
-    const next = current.includes(category)
-      ? current.filter(c => c !== category)
-      : [...current, category];
-    updateNotificationSettings({ ...settings, enabledCategories: next });
+    const next = ns.enabledCategories.includes(category)
+      ? ns.enabledCategories.filter(c => c !== category)
+      : [...ns.enabledCategories, category];
+    updateNotificationSettings({ ...ns, enabledCategories: next });
+  }
+
+  async function toggleLocation() {
+    if (ls.enabled) {
+      // Disable
+      updateLocationSettings({ ...ls, enabled: false });
+    } else {
+      // Enable — also request browser notification permission
+      const perm = await requestNotificationPermission();
+      updateLocationSettings({
+        ...ls,
+        enabled: true,
+        browserNotifications: perm === 'granted',
+      });
+    }
+  }
+
+  async function toggleBrowserNotifications() {
+    if (ls.browserNotifications) {
+      updateLocationSettings({ ...ls, browserNotifications: false });
+    } else {
+      const perm = await requestNotificationPermission();
+      updateLocationSettings({ ...ls, browserNotifications: perm === 'granted' });
+    }
   }
 
   return (
@@ -73,48 +72,114 @@ export default function SettingsPage() {
       {/* Header */}
       <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 px-5 pt-14 pb-7">
         <h1 className="text-white text-2xl font-black">Settings</h1>
-        <p className="text-indigo-200 text-sm mt-1">
-          Customize how AutoCard surfaces recommendations
-        </p>
+        <p className="text-indigo-200 text-sm mt-1">Customize your AutoCard experience</p>
       </div>
 
       <div className="px-4 pt-6 space-y-8">
-        {/* ── Notification Frequency ──────────────────────────────────── */}
+
+        {/* ── Location & Nearby ─────────────────────────────────────────── */}
         <section>
           <h2 className="text-[11px] uppercase tracking-widest font-bold text-gray-400 mb-3">
-            Notification Frequency
+            Location & Nearby Alerts
+          </h2>
+
+          {/* Location toggle */}
+          <button
+            onClick={toggleLocation}
+            className={`w-full flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all mb-2 ${
+              ls.enabled
+                ? 'border-indigo-300 bg-indigo-50'
+                : 'border-gray-100 bg-white'
+            }`}
+          >
+            <div className={`flex-shrink-0 ${ls.enabled ? 'text-indigo-600' : 'text-gray-400'}`}>
+              {ls.enabled ? <MapPin size={20}/> : <MapPinOff size={20}/>}
+            </div>
+            <div className="flex-1">
+              <p className={`text-sm font-semibold ${ls.enabled ? 'text-indigo-700' : 'text-gray-800'}`}>
+                Detect Nearby Businesses
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                AutoCard watches your location and surfaces the best card when you're near a restaurant, store, or gas station.
+              </p>
+            </div>
+            {/* Toggle pill */}
+            <div className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${
+              ls.enabled ? 'bg-indigo-600' : 'bg-gray-200'
+            }`}>
+              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
+                ls.enabled ? 'left-6' : 'left-1'
+              }`}/>
+            </div>
+          </button>
+
+          {/* Browser notifications sub-toggle — only shown when location is on */}
+          {ls.enabled && (
+            <button
+              onClick={toggleBrowserNotifications}
+              className={`w-full flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all ${
+                ls.browserNotifications
+                  ? 'border-indigo-200 bg-indigo-50/60'
+                  : 'border-gray-100 bg-gray-50'
+              }`}
+            >
+              <div className={`flex-shrink-0 ${ls.browserNotifications ? 'text-indigo-500' : 'text-gray-400'}`}>
+                <Bell size={18}/>
+              </div>
+              <div className="flex-1">
+                <p className={`text-sm font-semibold ${ls.browserNotifications ? 'text-indigo-700' : 'text-gray-700'}`}>
+                  Browser Notifications
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {ls.browserNotifications
+                    ? 'Enabled — you\'ll get alerts even when the app is in the background'
+                    : 'Tap to request permission for background alerts'}
+                </p>
+              </div>
+              <div className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${
+                ls.browserNotifications ? 'bg-indigo-500' : 'bg-gray-200'
+              }`}>
+                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
+                  ls.browserNotifications ? 'left-6' : 'left-1'
+                }`}/>
+              </div>
+            </button>
+          )}
+
+          {ls.enabled && (
+            <p className="text-[11px] text-gray-400 mt-2 px-1 leading-relaxed">
+              Uses your browser&apos;s Geolocation API + OpenStreetMap. No data leaves your device.
+            </p>
+          )}
+        </section>
+
+        {/* ── Notification Frequency ────────────────────────────────────── */}
+        <section>
+          <h2 className="text-[11px] uppercase tracking-widest font-bold text-gray-400 mb-3">
+            Recommendation Frequency
           </h2>
           <div className="space-y-2">
             {FREQUENCY_OPTIONS.map(({ value, label, description, Icon }) => {
-              const active = settings.frequency === value;
+              const active = ns.frequency === value;
               return (
                 <button
                   key={value}
                   onClick={() => setFrequency(value)}
                   className={`w-full flex items-start gap-3.5 p-4 rounded-2xl border-2 text-left transition-all ${
-                    active
-                      ? 'border-indigo-300 bg-indigo-50'
-                      : 'border-gray-100 bg-white hover:border-gray-200'
+                    active ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-white hover:border-gray-200'
                   }`}
                 >
                   <div className={`mt-0.5 flex-shrink-0 ${active ? 'text-indigo-600' : 'text-gray-400'}`}>
-                    <Icon size={18} />
+                    <Icon size={18}/>
                   </div>
                   <div className="flex-1">
-                    <p className={`text-sm font-semibold ${active ? 'text-indigo-700' : 'text-gray-800'}`}>
-                      {label}
-                    </p>
+                    <p className={`text-sm font-semibold ${active ? 'text-indigo-700' : 'text-gray-800'}`}>{label}</p>
                     <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{description}</p>
                   </div>
-                  {/* Selection indicator */}
                   <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                    active
-                      ? 'border-indigo-600 bg-indigo-600'
-                      : 'border-gray-300'
+                    active ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'
                   }`}>
-                    {active && (
-                      <div className="w-2 h-2 bg-white rounded-full" />
-                    )}
+                    {active && <div className="w-2 h-2 bg-white rounded-full"/>}
                   </div>
                 </button>
               );
@@ -122,25 +187,23 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* ── Category Preferences ────────────────────────────────────── */}
+        {/* ── Category Preferences ──────────────────────────────────────── */}
         <section>
           <h2 className="text-[11px] uppercase tracking-widest font-bold text-gray-400 mb-1">
-            Categories I care about
+            Categories I Care About
           </h2>
           <p className="text-xs text-gray-500 mb-3">
-            Uncheck categories to reduce noise from purchases you rarely make
+            Uncheck categories to filter out recommendations you don&apos;t need
           </p>
           <div className="grid grid-cols-2 gap-2">
             {CATEGORY_OPTIONS.map(({ id, label, emoji }) => {
-              const active = settings.enabledCategories.includes(id);
+              const active = ns.enabledCategories.includes(id);
               return (
                 <button
                   key={id}
                   onClick={() => toggleCategory(id)}
                   className={`flex items-center gap-2.5 p-3.5 rounded-2xl border-2 text-left transition-all ${
-                    active
-                      ? 'border-indigo-200 bg-indigo-50'
-                      : 'border-gray-100 bg-white opacity-50'
+                    active ? 'border-indigo-200 bg-indigo-50' : 'border-gray-100 bg-white opacity-50'
                   }`}
                 >
                   <span className="text-xl leading-none">{emoji}</span>
@@ -153,17 +216,16 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* ── Prototype Disclaimer ────────────────────────────────────── */}
+        {/* Disclaimer */}
         <section className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
           <p className="text-xs text-gray-400 leading-relaxed">
-            <span className="font-semibold text-gray-500">Prototype note:</span> AutoCard uses
-            mock purchase context to simulate recommendations. No real location data, banking
-            APIs, or account linking is used. All card data is illustrative.
+            <span className="font-semibold text-gray-500">Prototype note:</span> Location uses your browser&apos;s Geolocation API
+            and OpenStreetMap&apos;s free Overpass API. No banking data or real card accounts are used.
           </p>
         </section>
       </div>
 
-      <BottomNav />
+      <BottomNav/>
     </div>
   );
 }
