@@ -13,8 +13,9 @@ const RADII_METERS    = [600, 2_000, 5_000];
 const MIN_USEFUL      = 3;    // expand if fewer results than this
 const MAX_RESULTS     = 8;    // max returned to the UI
 const FETCH_LIMIT     = 25;   // Overpass server-side cap
-const FETCH_TIMEOUT   = 14_000;
-const SERVER_TIMEOUT  = 12;
+// Individual mirror timeout — kept short because we race all mirrors simultaneously
+const FETCH_TIMEOUT   = 8_000;
+const SERVER_TIMEOUT  = 7;
 
 const TAG_MAP: Record<string, Category> = {
   restaurant:  'dining',
@@ -102,6 +103,28 @@ async function fetchFromMirror(url: string, query: string): Promise<OsmElement[]
   }
 }
 
+/**
+ * Fires all mirrors simultaneously and returns the first non-null response.
+ * This is fundamentally faster than trying mirrors sequentially — response time
+ * equals the fastest mirror that succeeds, not the sum of all timeouts.
+ */
+async function raceFromMirrors(query: string): Promise<OsmElement[] | null> {
+  try {
+    return await Promise.any(
+      OVERPASS_MIRRORS.map(url =>
+        fetchFromMirror(url, query).then(r => {
+          // Treat null (mirror failed) as a rejection so Promise.any skips it
+          if (r === null) throw new Error('mirror failed');
+          return r;
+        })
+      )
+    );
+  } catch {
+    // AggregateError: every mirror failed
+    return null;
+  }
+}
+
 function mapElements(elements: OsmElement[], lat: number, lon: number): NearbyPlace[] {
   return elements
     .filter(el => {
@@ -131,24 +154,22 @@ function mapElements(elements: OsmElement[], lat: number, lon: number): NearbyPl
  */
 export async function fetchNearbyPlaces(lat: number, lon: number): Promise<NearbyPlace[]> {
   for (const radius of RADII_METERS) {
-    const query = buildQuery(lat, lon, radius);
+    const query  = buildQuery(lat, lon, radius);
     const isLast = radius === RADII_METERS[RADII_METERS.length - 1];
 
-    for (const mirror of OVERPASS_MIRRORS) {
-      const elements = await fetchFromMirror(mirror, query);
-      if (elements === null) continue; // try next mirror
+    const elements = await raceFromMirrors(query);
 
-      const places = mapElements(elements, lat, lon);
-
-      // Return if we have enough results, or this is the widest radius
-      if (places.length >= MIN_USEFUL || isLast) {
-        return places.slice(0, MAX_RESULTS);
-      }
-
-      // Got a valid API response but too few results → expand to next radius
-      break;
+    if (elements === null) {
+      // All mirrors failed at this radius — try next radius (different network conditions)
+      continue;
     }
-    // All mirrors failed at this radius → try next radius (different servers may succeed)
+
+    const places = mapElements(elements, lat, lon);
+
+    if (places.length >= MIN_USEFUL || isLast) {
+      return places.slice(0, MAX_RESULTS);
+    }
+    // Valid response but too few results → expand to next radius
   }
 
   throw new Error('OVERPASS_UNAVAILABLE');
@@ -183,29 +204,33 @@ export function distanceLabel(meters: number): { label: string; mode: 'walk' | '
 }
 
 /**
- * Searches for businesses matching `query` within `radiusMeters` of a point.
- * Uses Overpass regex so results are proximity-ranked by distance.
- * Returns [] silently if all mirrors fail (caller falls back to Nominatim).
+ * Searches for businesses matching `query` near a point using Overpass name regex.
+ * Tries 15 km first, then expands to 40 km if nothing is found.
+ * Uses parallel mirror racing — response time = fastest mirror, not sum.
+ * Returns [] when all mirrors fail or nothing matches (caller decides what to show).
  */
 export async function searchNearbyByName(
   query: string,
   lat: number,
   lon: number,
-  radiusMeters = 15_000,
 ): Promise<NearbyPlace[]> {
-  // Strip chars that break Overpass QL regex syntax
-  const safe = query.replace(/["\\]/g, '').trim();
+  // Strip chars that break Overpass QL regex / string syntax
+  const safe = query.replace(/["'\\]/g, '').trim();
   if (!safe) return [];
 
-  const q = `[out:json][timeout:12];(
-nwr["name"~"${safe}",i](around:${radiusMeters},${lat},${lon});
-);out body center 15;`;
+  for (const radius of [15_000, 40_000]) {
+    const oql = `[out:json][timeout:${SERVER_TIMEOUT}];(
+nwr["name"~"${safe}",i](around:${radius},${lat},${lon});
+);out body center 20;`;
 
-  for (const mirror of OVERPASS_MIRRORS) {
-    const elements = await fetchFromMirror(mirror, q);
-    if (elements === null) continue;
-    return mapElements(elements, lat, lon).slice(0, 8);
+    const elements = await raceFromMirrors(oql);
+    if (elements === null) return []; // all mirrors failed — give up
+
+    const places = mapElements(elements, lat, lon).slice(0, 8);
+    if (places.length > 0) return places;
+    // 0 results at this radius → try wider
   }
+
   return [];
 }
 
