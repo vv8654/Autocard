@@ -1,10 +1,16 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CARDS } from '../../data/cards';
 import { CreditCard } from '../../types';
 import { BottomNav } from '../../components/BottomNav';
 import { CardArtwork } from '../../components/CardArtwork';
+import { ROIBadge } from '../../components/ROIBadge';
+import { GhostCardBanner } from '../../components/GhostCardBanner';
+import { computeCardROI } from '../../lib/roi';
+import { detectGhostCards } from '../../lib/ghostCards';
+import { getCurrentRotating } from '../../lib/rotatingCategory';
 
 function RewardPills({ card }: { card: CreditCard }) {
   return (
@@ -36,8 +42,21 @@ function RewardPills({ card }: { card: CreditCard }) {
 }
 
 export default function WalletPage() {
-  const { state, toggleCard } = useApp();
+  const { state, toggleCard, enabledCards } = useApp();
   const enabledCount = state.enabledCardIds.length;
+
+  const roiMap = useMemo(() => {
+    const map: Record<string, ReturnType<typeof computeCardROI>> = {};
+    for (const card of CARDS) {
+      map[card.id] = computeCardROI(card.id, state.history, CARDS);
+    }
+    return map;
+  }, [state.history]);
+
+  const ghostSet = useMemo(() => {
+    const ghosts = detectGhostCards(enabledCards, state.history);
+    return new Map(ghosts.map(g => [g.cardId, g]));
+  }, [enabledCards, state.history]);
 
   return (
     <div className="pb-24">
@@ -55,6 +74,10 @@ export default function WalletPage() {
       <div className="px-4 pt-5 space-y-7">
         {CARDS.map(card => {
           const enabled = state.enabledCardIds.includes(card.id);
+          const roi     = roiMap[card.id];
+          const ghost   = ghostSet.get(card.id);
+          const rotating = enabled ? getCurrentRotating(card.id) : null;
+
           return (
             <div key={card.id}>
               {/* Card artwork — tappable */}
@@ -75,11 +98,28 @@ export default function WalletPage() {
                   }`}>
                     {enabled ? '● Active' : '○ Off'}
                   </div>
+
+                  {/* Rotating category countdown pill */}
+                  {rotating && rotating.daysRemaining > 0 && (
+                    <div className={`absolute bottom-3 left-3 flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold backdrop-blur-sm ${
+                      rotating.daysRemaining <= 14
+                        ? 'bg-amber-500/90 text-white'
+                        : 'bg-white/25 text-white'
+                    }`}>
+                      ⚡ {rotating.daysRemaining}d left · 5x {rotating.entry.label.split(' ')[0]}
+                    </div>
+                  )}
                 </div>
               </button>
 
               {/* Reward info below the card */}
-              {enabled && <RewardPills card={card}/>}
+              {enabled && (
+                <>
+                  <RewardPills card={card}/>
+                  {roi && <ROIBadge roi={roi}/>}
+                  {ghost && <GhostCardBanner ghost={ghost}/>}
+                </>
+              )}
               {!enabled && (
                 <p className="text-center text-xs text-gray-400 mt-2">
                   Tap to activate

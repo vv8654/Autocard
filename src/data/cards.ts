@@ -1,4 +1,4 @@
-import { CreditCard } from '../types';
+import { CreditCard, RotatingCategoryEntry } from '../types';
 
 /**
  * Mock credit card data with simplified (but realistic) reward structures.
@@ -140,4 +140,12 @@ export const DEFAULT_ENABLED_CARD_IDS = [
   'amex-gold',
   'sapphire-preferred',
   'venture-x',
+];
+
+// Quarterly rotating bonus schedules (Freedom Flex 5x category)
+export const ROTATING_SCHEDULES: RotatingCategoryEntry[] = [
+  { cardId: 'chase-freedom-flex', quarter: 1, months: [0, 1, 2],  category: 'grocery', label: 'Grocery & PayPal' },
+  { cardId: 'chase-freedom-flex', quarter: 2, months: [3, 4, 5],  category: 'gas',     label: 'Gas & Home Improvement' },
+  { cardId: 'chase-freedom-flex', quarter: 3, months: [6, 7, 8],  category: 'grocery', label: 'Grocery & Streaming' },
+  { cardId: 'chase-freedom-flex', quarter: 4, months: [9, 10, 11],category: 'online',  label: 'Amazon & Walmart' },
 ];

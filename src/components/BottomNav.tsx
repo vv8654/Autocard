@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, CreditCard, Clock, Settings } from 'lucide-react';
+import { Home, Search, CreditCard, BarChart2, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { href: '/',         icon: Home,       label: 'Home'     },
-  { href: '/search',   icon: Search,     label: 'Search'   },
-  { href: '/wallet',   icon: CreditCard, label: 'Wallet'   },
-  { href: '/history',  icon: Clock,      label: 'History'  },
-  { href: '/settings', icon: Settings,   label: 'Settings' },
+  { href: '/',          icon: Home,       label: 'Home'     },
+  { href: '/search',    icon: Search,     label: 'Search'   },
+  { href: '/wallet',    icon: CreditCard, label: 'Wallet'   },
+  { href: '/insights',  icon: BarChart2,  label: 'Insights' },
+  { href: '/settings',  icon: Settings,   label: 'Settings' },
 ] as const;
 
 export function BottomNav() {

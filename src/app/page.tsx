@@ -9,6 +9,7 @@ import { sendBrowserNotification } from '../lib/location';
 import { useNearbyPlaces } from '../hooks/useNearbyPlaces';
 import { RecommendationModal } from '../components/RecommendationModal';
 import { BottomNav } from '../components/BottomNav';
+import { RotatingCategoryBanner } from '../components/RotatingCategoryBanner';
 import { Merchant, NearbyPlace, Recommendation } from '../types';
 import Link from 'next/link';
 
@@ -268,9 +269,9 @@ export default function HomePage() {
             )}
             {state.history.length > 0 && (
               <div className="border-t border-gray-100">
-                <Link href="/history" onClick={() => setShowNotifications(false)}
+                <Link href="/insights" onClick={() => setShowNotifications(false)}
                   className="block text-center py-2.5 text-xs font-semibold text-indigo-500 hover:text-indigo-700 transition-colors">
-                  View full history →
+                  View full history & simulator →
                 </Link>
               </div>
             )}
@@ -287,6 +288,9 @@ export default function HomePage() {
           onTap={handleNearbyTap}
         />
       )}
+
+      {/* ── Rotating Category Countdown ──────────────────────────────────── */}
+      <RotatingCategoryBanner/>
 
       {/* ── Latest Tip Banner ─────────────────────────────────────────────── */}
       {latestRec && !showNotifications && (

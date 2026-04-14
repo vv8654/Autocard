@@ -94,3 +94,57 @@ export interface AppState {
   locationSettings: LocationSettings;
   history: Recommendation[];
 }
+
+// ── Feature: Rotating Category Countdown ────────────────────────────────────
+
+export interface RotatingCategoryEntry {
+  cardId: string;
+  quarter: number;
+  months: number[]; // 0-indexed (Jan=0)
+  category: Category;
+  label: string;
+}
+
+export interface RotatingCategorySchedule {
+  entry: RotatingCategoryEntry;
+  daysRemaining: number;
+  daysIntoQuarter: number;
+  percentElapsed: number;
+}
+
+// ── Feature: Annual Fee ROI Calculator ──────────────────────────────────────
+
+export interface CardROIResult {
+  cardId: string;
+  annualFee: number;
+  estimatedRewardsValue: number; // sum of (CPD/100 × amount) across history wins
+  netROI: number;                // estimatedRewardsValue - annualFee
+  isAhead: boolean;
+}
+
+// ── Feature: Ghost Card Detection ───────────────────────────────────────────
+
+export interface GhostCard {
+  cardId: string;
+  daysSinceLastWin: number; // Infinity if never won
+  annualFee: number;
+  suggestedAction: string;
+}
+
+// ── Feature: What-If Simulator ───────────────────────────────────────────────
+
+export interface SimulatedHistoryRow {
+  recommendation: Recommendation;
+  simulatedCard: RankedCard;
+  actualCPD: number;
+  simulatedCPD: number;
+  deltaPerDollar: number; // simulatedCPD - actualCPD
+}
+
+export interface SimulationResult {
+  cardId: string;
+  totalActualValue: number;
+  totalSimulatedValue: number;
+  netDelta: number; // positive = would have earned more with simulated card
+  rows: SimulatedHistoryRow[];
+}
