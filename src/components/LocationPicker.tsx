@@ -62,7 +62,7 @@ export function LocationPicker({
       try {
         const url =
           `https://nominatim.openstreetmap.org/search` +
-          `?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6`;
+          `?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=us`;
         const res = await fetch(url, {
           headers: { 'Accept-Language': 'en', 'User-Agent': 'AutoCard/1.0' },
         });
@@ -111,7 +111,7 @@ export function LocationPicker({
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search city, neighborhood, address…"
+              placeholder="Search US city, neighborhood, or zip…"
               value={query}
               onChange={e => setQuery(e.target.value)}
               className="w-full bg-gray-100 rounded-xl px-4 py-3 pr-9 text-sm text-gray-900 placeholder-gray-400 outline-none focus:ring-2 focus:ring-indigo-300"
@@ -162,7 +162,7 @@ export function LocationPicker({
             <p className="text-xs text-gray-400 text-center py-6 px-4 leading-relaxed">
               {current
                 ? `Currently pinned: ${current.label}`
-                : 'Search for a city or neighborhood to pin a location for nearby business detection'}
+                : 'Search any US city, neighborhood, or zip code to pin a location'}
             </p>
           )}
         </div>
