@@ -110,14 +110,17 @@ function ResultRow({
   result,
   onTap,
   enabledCards,
+  bonuses,
+  redemptionStyle,
 }: {
   result: SearchResult;
   onTap: (rec: Recommendation) => void;
   enabledCards: ReturnType<typeof useApp>['enabledCards'];
+  bonuses: ReturnType<typeof useApp>['state']['bonuses'];
+  redemptionStyle: ReturnType<typeof useApp>['state']['redemptionStyle'];
 }) {
   if (enabledCards.length === 0) return null;
 
-  // Build a synthetic merchant from search result
   const syntheticMerchant: Merchant = {
     id:            result.id,
     name:          result.name,
@@ -127,7 +130,7 @@ function ResultRow({
     scenarioLabel: CATEGORY_LABEL[result.category],
   };
   const ctx = { merchantId: result.id, merchant: syntheticMerchant, estimatedAmount: 50 };
-  const rec = getRecommendation(ctx, enabledCards);
+  const rec = getRecommendation(ctx, enabledCards, bonuses, redemptionStyle);
 
   return (
     <button
@@ -171,7 +174,7 @@ function ResultRow({
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SearchPage() {
-  const { enabledCards, addToHistory } = useApp();
+  const { enabledCards, addToHistory, state } = useApp();
   const [query,   setQuery]   = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -328,7 +331,7 @@ export default function SearchPage() {
               {activeCategory ? ` in ${CATEGORY_LABEL[activeCategory]}` : ''}
             </p>
             {results.map(r => (
-              <ResultRow key={r.id} result={r} onTap={handleTap} enabledCards={enabledCards}/>
+              <ResultRow key={r.id} result={r} onTap={handleTap} enabledCards={enabledCards} bonuses={state.bonuses} redemptionStyle={state.redemptionStyle}/>
             ))}
             {results.some(r => r.source === 'osm') && (
               <p className="text-[10px] text-gray-400 text-center pt-1">

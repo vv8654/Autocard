@@ -11,6 +11,9 @@ export type Category =
   | 'online'
   | 'general';
 
+export type RewardsType = 'MR' | 'UR' | 'Miles' | 'Cash';
+export type RedemptionStyle = 'simple' | 'balanced' | 'max';
+
 export interface RewardRate {
   category: Category;
   multiplier: number;
@@ -28,7 +31,8 @@ export interface CreditCard {
   lastFour: string;
   annualFee: number;
   pointsName: string;
-  pointValue: number;
+  pointValue: number;     // kept for fallback / display; engine uses rewardsType + style
+  rewardsType: RewardsType;
   baseMultiplier: number;
   keyBenefit: string;
   rewards: RewardRate[];
@@ -52,9 +56,21 @@ export interface PurchaseContext {
 export interface RankedCard {
   card: CreditCard;
   multiplier: number;
-  effectiveCPD: number;
+  effectiveCPD: number;   // total score = baseCPD + bonusCPD
+  baseCPD?: number;       // earn_rate × pointValue (no bonus)
+  bonusCPD?: number;      // bonus contribution to score
+  bonusApplied?: boolean;
   rank: number;
   note?: string;
+}
+
+export interface BonusContext {
+  totalValue: number;
+  remainingSpend: number;
+  bonusCPD: number;
+  baseCPD: number;
+  // best card by base score alone (if different from bonus-boosted winner)
+  baselineBest?: { cardId: string; shortName: string; effectiveCPD: number };
 }
 
 export interface Recommendation {
@@ -65,6 +81,19 @@ export interface Recommendation {
   explanation: string;
   timestamp: string;
   isHighValue: boolean;
+  bonusContext?: BonusContext;
+}
+
+// ── Bonus tracking ──────────────────────────────────────────────────────────
+
+export interface Bonus {
+  cardId: string;
+  label: string;          // e.g. "Welcome Offer"
+  totalValue: number;     // dollar value of the bonus reward
+  requiredSpend: number;  // spend threshold to earn it
+  currentSpend: number;   // tracked spend so far
+  deadline?: string;      // ISO date string (optional)
+  active: boolean;
 }
 
 export type NotificationFrequency = 'all' | 'high-value' | 'off';
@@ -77,15 +106,15 @@ export interface NotificationSettings {
 
 export interface LocationSettings {
   enabled: boolean;
-  notifyNearby: boolean;       // show banner/notification for nearby high-value spots
-  browserNotifications: boolean; // Web Notifications API permission granted
+  notifyNearby: boolean;
+  browserNotifications: boolean;
 }
 
 export interface NearbyPlace {
   id: string;
   name: string;
   category: Category;
-  distance?: number; // meters
+  distance?: number;
 }
 
 export interface AppState {
@@ -93,6 +122,8 @@ export interface AppState {
   notificationSettings: NotificationSettings;
   locationSettings: LocationSettings;
   history: Recommendation[];
+  bonuses: Bonus[];
+  redemptionStyle: RedemptionStyle;
 }
 
 // ── Feature: Rotating Category Countdown ────────────────────────────────────
@@ -100,7 +131,7 @@ export interface AppState {
 export interface RotatingCategoryEntry {
   cardId: string;
   quarter: number;
-  months: number[]; // 0-indexed (Jan=0)
+  months: number[];
   category: Category;
   label: string;
 }
@@ -117,8 +148,8 @@ export interface RotatingCategorySchedule {
 export interface CardROIResult {
   cardId: string;
   annualFee: number;
-  estimatedRewardsValue: number; // sum of (CPD/100 × amount) across history wins
-  netROI: number;                // estimatedRewardsValue - annualFee
+  estimatedRewardsValue: number;
+  netROI: number;
   isAhead: boolean;
 }
 
@@ -126,7 +157,7 @@ export interface CardROIResult {
 
 export interface GhostCard {
   cardId: string;
-  daysSinceLastWin: number; // Infinity if never won
+  daysSinceLastWin: number;
   annualFee: number;
   suggestedAction: string;
 }
@@ -138,13 +169,13 @@ export interface SimulatedHistoryRow {
   simulatedCard: RankedCard;
   actualCPD: number;
   simulatedCPD: number;
-  deltaPerDollar: number; // simulatedCPD - actualCPD
+  deltaPerDollar: number;
 }
 
 export interface SimulationResult {
   cardId: string;
   totalActualValue: number;
   totalSimulatedValue: number;
-  netDelta: number; // positive = would have earned more with simulated card
+  netDelta: number;
   rows: SimulatedHistoryRow[];
 }

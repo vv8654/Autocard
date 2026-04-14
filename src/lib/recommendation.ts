@@ -1,29 +1,33 @@
 /**
- * AutoCard Recommendation Engine
+ * AutoCard Recommendation Engine v2
  *
- * ── How it works ────────────────────────────────────────────────────────────
- * For a given purchase context (merchant → category), we evaluate every enabled
- * card and compute an "effective cents per dollar" (CPD) value:
+ * ── Scoring model ───────────────────────────────────────────────────────────
+ *   base_value   = earn_rate × pointValue(rewardsType, redemptionStyle)
+ *   bonus_value  = (bonus.totalValue / remaining_spend) × 100   [¢/$]
+ *                  (only when bonus.active && remaining_spend > 0)
+ *   total_score  = base_value + bonus_value
  *
- *   CPD = rewardMultiplier × pointValue
- *
- * Cards are ranked by CPD descending. The top card is the recommendation.
- * A plain-English explanation is generated for the best result.
+ * Cards are ranked by total_score descending.
  *
  * ── Simplifying assumptions ─────────────────────────────────────────────────
- * - Point values are estimates based on common redemption paths:
- *     Amex MR ~2.0¢, Chase UR (Sapphire) ~2.0¢, Chase UR (Flex) ~1.5¢,
- *     Capital One Miles ~1.85¢, cash back = face value (1¢/1%)
- * - Citi Custom Cash: we assume the purchase category IS the user's top
- *   monthly spend (so 5% applies). In reality, the user must track this.
- * - Chase Freedom Flex rotating category: fixed to "grocery" for Q3 in demo.
- * - Spend caps (e.g., $25k/yr grocery on Amex Gold) are shown in notes but
- *   not enforced — this simplifies the engine for demo purposes.
- * - "High value" threshold: 5¢ per dollar or higher.
+ * - Citi Custom Cash: assumes this category IS the user's top monthly spend.
+ * - Freedom Flex rotating category: fixed to current quarter in demo.
+ * - Spend caps shown in notes but not enforced.
+ * - "High value" threshold: 5¢ per dollar or higher (base score only).
  */
 
-import { CreditCard, Merchant, PurchaseContext, RankedCard, Recommendation } from '../types';
+import {
+  Bonus,
+  BonusContext,
+  CreditCard,
+  Merchant,
+  PurchaseContext,
+  RankedCard,
+  RedemptionStyle,
+  Recommendation,
+} from '../types';
 import { MERCHANTS } from '../data/merchants';
+import { getPointValue } from './pointValues';
 
 // ── Public helpers ──────────────────────────────────────────────────────────
 
@@ -33,7 +37,7 @@ export function getMerchantById(id: string): Merchant | undefined {
 
 export function buildContext(
   merchantId: string,
-  estimatedAmount = 50
+  estimatedAmount = 50,
 ): PurchaseContext | null {
   const merchant = getMerchantById(merchantId);
   if (!merchant) return null;
@@ -46,23 +50,46 @@ export function buildContext(
  */
 export function getRecommendation(
   context: PurchaseContext,
-  enabledCards: CreditCard[]
+  enabledCards: CreditCard[],
+  bonuses: Bonus[] = [],
+  redemptionStyle: RedemptionStyle = 'balanced',
 ): Recommendation {
   if (enabledCards.length === 0) {
     throw new Error('AutoCard: getRecommendation called with no enabled cards');
   }
 
-  // Rank all enabled cards for this purchase category
   const ranked: RankedCard[] = enabledCards
     .map(card => {
+      // ── Step 1: base score ───────────────────────────────────────────────
       const rate = card.rewards.find(r => r.category === context.merchant.category);
       const multiplier = rate?.multiplier ?? card.baseMultiplier;
-      const effectiveCPD = +(multiplier * card.pointValue).toFixed(2);
+      const pointValue = getPointValue(card.rewardsType, redemptionStyle);
+      const baseCPD = +(multiplier * pointValue).toFixed(2);
+
+      // ── Step 2: bonus score ──────────────────────────────────────────────
+      const bonus = bonuses.find(b => b.cardId === card.id && b.active);
+      let bonusCPD = 0;
+      let bonusApplied = false;
+      if (bonus) {
+        const remaining = bonus.requiredSpend - bonus.currentSpend;
+        if (remaining > 0) {
+          // Convert dollars-per-dollar to cents-per-dollar
+          bonusCPD = +((bonus.totalValue / remaining) * 100).toFixed(2);
+          bonusApplied = true;
+        }
+      }
+
+      // ── Step 3: total score ──────────────────────────────────────────────
+      const effectiveCPD = +(baseCPD + bonusCPD).toFixed(2);
+
       return {
         card,
         multiplier,
         effectiveCPD,
-        rank: 0, // filled in after sort
+        baseCPD,
+        bonusCPD,
+        bonusApplied,
+        rank: 0,
         note: rate?.notes,
       };
     })
@@ -71,8 +98,40 @@ export function getRecommendation(
 
   const best = ranked[0];
   const alternatives = ranked.slice(1);
-  const isHighValue = best.effectiveCPD >= 5;
-  const explanation = buildExplanation(best, context, ranked);
+
+  // High-value is based on base score (so bonus doesn't inflate the threshold)
+  const isHighValue = (best.baseCPD ?? best.effectiveCPD) >= 5;
+
+  // ── Bonus context: what would win without the bonus? ─────────────────────
+  let bonusContext: BonusContext | undefined;
+  if (best.bonusApplied) {
+    const bonus = bonuses.find(b => b.cardId === best.card.id && b.active)!;
+    const remaining = bonus.requiredSpend - bonus.currentSpend;
+
+    // Rank cards by base score alone
+    const baselineRanked = [...ranked].sort(
+      (a, b) => (b.baseCPD ?? b.effectiveCPD) - (a.baseCPD ?? a.effectiveCPD),
+    );
+    const baselineWinner = baselineRanked[0];
+    const baselineBest =
+      baselineWinner.card.id !== best.card.id
+        ? {
+            cardId: baselineWinner.card.id,
+            shortName: baselineWinner.card.shortName,
+            effectiveCPD: baselineWinner.baseCPD ?? baselineWinner.effectiveCPD,
+          }
+        : undefined;
+
+    bonusContext = {
+      totalValue: bonus.totalValue,
+      remainingSpend: remaining,
+      bonusCPD: best.bonusCPD ?? 0,
+      baseCPD: best.baseCPD ?? best.effectiveCPD,
+      baselineBest,
+    };
+  }
+
+  const explanation = buildExplanation(best, context, ranked, bonusContext);
 
   return {
     id: generateId(),
@@ -82,6 +141,7 @@ export function getRecommendation(
     explanation,
     timestamp: new Date().toISOString(),
     isHighValue,
+    bonusContext,
   };
 }
 
@@ -90,26 +150,39 @@ export function getRecommendation(
 function buildExplanation(
   best: RankedCard,
   context: PurchaseContext,
-  allRanked: RankedCard[]
+  allRanked: RankedCard[],
+  bonusContext?: BonusContext,
 ): string {
   const { card, multiplier, effectiveCPD } = best;
   const categoryLabel = categoryDisplayName(context.merchant.category);
   const secondBest = allRanked[1];
 
-  // Core sentence: card name, category, multiplier, CPD
+  if (bonusContext) {
+    const { totalValue, remainingSpend, baseCPD, baselineBest } = bonusContext;
+    const remaining = remainingSpend.toLocaleString('en-US', {
+      style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+    });
+    let text = `Use ${card.shortName} — you're ${remaining} away from a $${totalValue} bonus, boosting your effective return to ${effectiveCPD.toFixed(1)}¢ per dollar.`;
+    if (baselineBest) {
+      text += ` Without this bonus, ${baselineBest.shortName} would be best (${baselineBest.effectiveCPD.toFixed(1)}¢/$).`;
+    } else {
+      text += ` It also earns ${baseCPD.toFixed(1)}¢/$ on ${categoryLabel} purchases outright.`;
+    }
+    return text;
+  }
+
   let text = `Use ${card.shortName} — ${categoryLabel} earns ${multiplier}x ${card.pointsName} (≈${effectiveCPD.toFixed(1)}¢ per dollar).`;
 
-  // Margin commentary
   if (secondBest) {
-    const margin = effectiveCPD - secondBest.effectiveCPD;
+    const margin = effectiveCPD - (secondBest.baseCPD ?? secondBest.effectiveCPD);
+    const secondCPD = secondBest.baseCPD ?? secondBest.effectiveCPD;
     if (margin >= 2) {
       text += ` That's ${margin.toFixed(1)}¢ more than your next-best option (${secondBest.card.shortName}).`;
     } else if (margin > 0) {
-      text += ` Slightly ahead of ${secondBest.card.shortName} at ${secondBest.effectiveCPD.toFixed(1)}¢/$1.`;
+      text += ` Slightly ahead of ${secondBest.card.shortName} at ${secondCPD.toFixed(1)}¢/$1.`;
     }
   }
 
-  // Cap/condition note
   if (best.note) {
     text += ` Note: ${best.note}.`;
   }

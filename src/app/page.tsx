@@ -105,12 +105,12 @@ export default function HomePage() {
       const ctx = buildContext(merchant.id);
       if (!ctx) continue;
       try {
-        const rec = getRecommendation(ctx, enabledCards);
+        const rec = getRecommendation(ctx, enabledCards, state.bonuses, state.redemptionStyle);
         out[merchant.id] = { cpd: rec.best.effectiveCPD, isHV: rec.isHighValue };
       } catch { /* skip */ }
     }
     return out;
-  }, [enabledCards]);
+  }, [enabledCards, state.bonuses, state.redemptionStyle]);
 
   // Fire a browser notification when a new high-value nearby place is detected
   const topPlace = places[0];
@@ -124,7 +124,7 @@ export default function HomePage() {
     };
     const ctx = { merchantId: topPlace.id, merchant: syntheticMerchant, estimatedAmount: 50 };
     try {
-      const rec = getRecommendation(ctx, enabledCards);
+      const rec = getRecommendation(ctx, enabledCards, state.bonuses, state.redemptionStyle);
       if (rec.isHighValue || state.notificationSettings.frequency === 'all') {
         sendBrowserNotification(
           `📍 ${topPlace.name} nearby`,
@@ -140,7 +140,7 @@ export default function HomePage() {
     const ctx = buildContext(merchantId);
     if (!ctx) return;
     try {
-      const rec = getRecommendation(ctx, enabledCards);
+      const rec = getRecommendation(ctx, enabledCards, state.bonuses, state.redemptionStyle);
       setActiveRec(rec);
       addToHistory(rec);
     } catch { /* no-op */ }
@@ -154,7 +154,7 @@ export default function HomePage() {
     };
     const ctx = { merchantId: place.id, merchant: syntheticMerchant, estimatedAmount: 50 };
     try {
-      const rec = getRecommendation(ctx, enabledCards);
+      const rec = getRecommendation(ctx, enabledCards, state.bonuses, state.redemptionStyle);
       setActiveRec(rec);
       addToHistory(rec);
     } catch { /* no-op */ }

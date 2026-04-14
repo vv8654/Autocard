@@ -1,16 +1,10 @@
-import { CreditCard, RotatingCategoryEntry } from '../types';
+import { Bonus, CreditCard, RotatingCategoryEntry } from '../types';
 
 /**
  * Mock credit card data with simplified (but realistic) reward structures.
  *
- * Point value assumptions:
- *   - Amex Membership Rewards: ~2.0¢/pt (via airline/hotel transfer partners)
- *   - Chase Ultimate Rewards (Sapphire): ~2.0¢/pt (via transfer partners)
- *   - Chase UR (Freedom Flex): ~1.5¢/pt (via travel portal; or 1¢ as cash back)
- *   - Capital One Miles: ~1.85¢/mile (via transfer partners)
- *   - Cash back cards (Citi, Blue Cash): 1¢ per 1% — face value
- *
- * Caps are noted in `notes` but not enforced in this prototype.
+ * pointValue is kept for legacy display; the recommendation engine uses
+ * rewardsType + redemptionStyle to look up the live valuation.
  */
 export const CARDS: CreditCard[] = [
   {
@@ -24,6 +18,7 @@ export const CARDS: CreditCard[] = [
     annualFee: 250,
     pointsName: 'MR pts',
     pointValue: 2.0,
+    rewardsType: 'MR',
     baseMultiplier: 1,
     keyBenefit: '4x dining & US groceries worldwide',
     rewards: [
@@ -43,12 +38,12 @@ export const CARDS: CreditCard[] = [
     annualFee: 0,
     pointsName: 'Chase UR pts',
     pointValue: 1.5,
+    rewardsType: 'UR',
     baseMultiplier: 1,
     keyBenefit: '5x rotating categories + 3x dining & pharmacy',
     rewards: [
       { category: 'dining',   multiplier: 3, notes: 'Restaurants' },
       { category: 'pharmacy', multiplier: 3, notes: 'Drug stores' },
-      // Q3 rotating: grocery stores
       { category: 'grocery',  multiplier: 5, capAmount: 1500, notes: 'Q3 rotating category — grocery, up to $1,500/quarter' },
     ],
   },
@@ -63,10 +58,10 @@ export const CARDS: CreditCard[] = [
     annualFee: 0,
     pointsName: '% cash back',
     pointValue: 1.0,
+    rewardsType: 'Cash',
     baseMultiplier: 1,
     keyBenefit: '5% on your #1 spend category (up to $500/mo)',
     rewards: [
-      // Assumes this purchase category IS the user's top monthly spend
       { category: 'dining',    multiplier: 5, capAmount: 500, notes: 'If dining is your top category this billing cycle' },
       { category: 'grocery',   multiplier: 5, capAmount: 500, notes: 'If grocery is your top category this billing cycle' },
       { category: 'gas',       multiplier: 5, capAmount: 500, notes: 'If gas is your top category this billing cycle' },
@@ -87,7 +82,8 @@ export const CARDS: CreditCard[] = [
     annualFee: 395,
     pointsName: 'miles',
     pointValue: 1.85,
-    baseMultiplier: 2, // 2x on everything — the key differentiator
+    rewardsType: 'Miles',
+    baseMultiplier: 2,
     keyBenefit: '2x on everything, 5–10x on travel',
     rewards: [
       { category: 'travel', multiplier: 5, notes: 'Flights via Capital One Travel portal' },
@@ -104,6 +100,7 @@ export const CARDS: CreditCard[] = [
     annualFee: 95,
     pointsName: 'Chase UR pts',
     pointValue: 2.0,
+    rewardsType: 'UR',
     baseMultiplier: 1,
     keyBenefit: '3x dining, streaming & online grocery; 2x travel',
     rewards: [
@@ -124,6 +121,7 @@ export const CARDS: CreditCard[] = [
     annualFee: 95,
     pointsName: '% cash back',
     pointValue: 1.0,
+    rewardsType: 'Cash',
     baseMultiplier: 1,
     keyBenefit: '6% groceries & streaming, 3% transit & gas',
     rewards: [
@@ -148,4 +146,17 @@ export const ROTATING_SCHEDULES: RotatingCategoryEntry[] = [
   { cardId: 'chase-freedom-flex', quarter: 2, months: [3, 4, 5],  category: 'gas',     label: 'Gas & Home Improvement' },
   { cardId: 'chase-freedom-flex', quarter: 3, months: [6, 7, 8],  category: 'grocery', label: 'Grocery & Streaming' },
   { cardId: 'chase-freedom-flex', quarter: 4, months: [9, 10, 11],category: 'online',  label: 'Amazon & Walmart' },
+];
+
+/**
+ * Pre-filled bonus templates (welcome offers / sign-up bonuses).
+ * One-tap activation in the Wallet; currentSpend and active are set at activation time.
+ */
+export const PRESET_BONUSES: Omit<Bonus, 'currentSpend' | 'active'>[] = [
+  { cardId: 'amex-gold',           label: 'Welcome Offer', totalValue: 250, requiredSpend: 2000 },
+  { cardId: 'chase-freedom-flex',  label: 'Welcome Offer', totalValue: 200, requiredSpend: 500  },
+  { cardId: 'citi-custom-cash',    label: 'Welcome Offer', totalValue: 200, requiredSpend: 1500 },
+  { cardId: 'venture-x',           label: 'Welcome Offer', totalValue: 750, requiredSpend: 4000 },
+  { cardId: 'sapphire-preferred',  label: 'Welcome Offer', totalValue: 300, requiredSpend: 4000 },
+  { cardId: 'blue-cash-preferred', label: 'Welcome Offer', totalValue: 250, requiredSpend: 3000 },
 ];

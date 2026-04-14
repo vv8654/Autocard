@@ -8,6 +8,7 @@ import { BottomNav } from '../../components/BottomNav';
 import { CardArtwork } from '../../components/CardArtwork';
 import { ROIBadge } from '../../components/ROIBadge';
 import { GhostCardBanner } from '../../components/GhostCardBanner';
+import { BonusTracker } from '../../components/BonusTracker';
 import { computeCardROI } from '../../lib/roi';
 import { detectGhostCards } from '../../lib/ghostCards';
 import { getCurrentRotating } from '../../lib/rotatingCategory';
@@ -42,7 +43,7 @@ function RewardPills({ card }: { card: CreditCard }) {
 }
 
 export default function WalletPage() {
-  const { state, toggleCard, enabledCards } = useApp();
+  const { state, toggleCard, enabledCards, activateBonus, deactivateBonus, updateBonusSpend } = useApp();
   const enabledCount = state.enabledCardIds.length;
 
   const roiMap = useMemo(() => {
@@ -73,14 +74,15 @@ export default function WalletPage() {
 
       <div className="px-4 pt-5 space-y-7">
         {CARDS.map(card => {
-          const enabled = state.enabledCardIds.includes(card.id);
-          const roi     = roiMap[card.id];
-          const ghost   = ghostSet.get(card.id);
+          const enabled  = state.enabledCardIds.includes(card.id);
+          const roi      = roiMap[card.id];
+          const ghost    = ghostSet.get(card.id);
           const rotating = enabled ? getCurrentRotating(card.id) : null;
+          const bonus    = state.bonuses.find(b => b.cardId === card.id);
 
           return (
             <div key={card.id}>
-              {/* Card artwork — tappable */}
+              {/* Card artwork — tappable to toggle */}
               <button
                 onClick={() => toggleCard(card.id)}
                 className={`w-full transition-all active:scale-[0.985] ${
@@ -90,7 +92,6 @@ export default function WalletPage() {
               >
                 <div className="relative">
                   <CardArtwork cardId={card.id} lastFour={card.lastFour}/>
-                  {/* Active / Off pill overlaid on card */}
                   <div className={`absolute top-3 right-3 text-[10px] font-bold px-2.5 py-1 rounded-full ${
                     enabled
                       ? 'bg-white/25 text-white backdrop-blur-sm'
@@ -99,7 +100,7 @@ export default function WalletPage() {
                     {enabled ? '● Active' : '○ Off'}
                   </div>
 
-                  {/* Rotating category countdown pill */}
+                  {/* Rotating countdown pill */}
                   {rotating && rotating.daysRemaining > 0 && (
                     <div className={`absolute bottom-3 left-3 flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold backdrop-blur-sm ${
                       rotating.daysRemaining <= 14
@@ -109,21 +110,32 @@ export default function WalletPage() {
                       ⚡ {rotating.daysRemaining}d left · 5x {rotating.entry.label.split(' ')[0]}
                     </div>
                   )}
+
+                  {/* Bonus active indicator on card */}
+                  {bonus?.active && bonus.currentSpend < bonus.requiredSpend && (
+                    <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-violet-500/90 text-white backdrop-blur-sm">
+                      🎁 Bonus on
+                    </div>
+                  )}
                 </div>
               </button>
 
-              {/* Reward info below the card */}
-              {enabled && (
+              {/* Info below the card */}
+              {enabled ? (
                 <>
                   <RewardPills card={card}/>
                   {roi && <ROIBadge roi={roi}/>}
                   {ghost && <GhostCardBanner ghost={ghost}/>}
+                  <BonusTracker
+                    cardId={card.id}
+                    bonus={bonus}
+                    onActivate={() => activateBonus(card.id)}
+                    onDeactivate={() => deactivateBonus(card.id)}
+                    onAddSpend={amount => updateBonusSpend(card.id, amount)}
+                  />
                 </>
-              )}
-              {!enabled && (
-                <p className="text-center text-xs text-gray-400 mt-2">
-                  Tap to activate
-                </p>
+              ) : (
+                <p className="text-center text-xs text-gray-400 mt-2">Tap to activate</p>
               )}
             </div>
           );

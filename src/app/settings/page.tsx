@@ -1,10 +1,11 @@
 'use client';
 
-import { Bell, BellOff, Zap, MapPin, MapPinOff } from 'lucide-react';
+import { Bell, BellOff, Zap, MapPin, MapPinOff, TrendingUp } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Category, NotificationFrequency } from '../../types';
+import { Category, NotificationFrequency, RedemptionStyle } from '../../types';
 import { BottomNav } from '../../components/BottomNav';
 import { requestNotificationPermission } from '../../lib/location';
+import { REDEMPTION_STYLE_INFO } from '../../lib/pointValues';
 
 const FREQUENCY_OPTIONS: {
   value: NotificationFrequency;
@@ -28,9 +29,11 @@ const CATEGORY_OPTIONS: { id: Category; label: string; emoji: string }[] = [
   { id: 'online',    label: 'Online Shopping',     emoji: '📦' },
 ];
 
+const STYLE_OPTIONS: RedemptionStyle[] = ['simple', 'balanced', 'max'];
+
 export default function SettingsPage() {
-  const { state, updateNotificationSettings, updateLocationSettings } = useApp();
-  const { notificationSettings: ns, locationSettings: ls } = state;
+  const { state, updateNotificationSettings, updateLocationSettings, updateRedemptionStyle } = useApp();
+  const { notificationSettings: ns, locationSettings: ls, redemptionStyle } = state;
 
   function setFrequency(frequency: NotificationFrequency) {
     updateNotificationSettings({ ...ns, frequency });
@@ -45,16 +48,10 @@ export default function SettingsPage() {
 
   async function toggleLocation() {
     if (ls.enabled) {
-      // Disable
       updateLocationSettings({ ...ls, enabled: false });
     } else {
-      // Enable — also request browser notification permission
       const perm = await requestNotificationPermission();
-      updateLocationSettings({
-        ...ls,
-        enabled: true,
-        browserNotifications: perm === 'granted',
-      });
+      updateLocationSettings({ ...ls, enabled: true, browserNotifications: perm === 'granted' });
     }
   }
 
@@ -77,19 +74,60 @@ export default function SettingsPage() {
 
       <div className="px-4 pt-6 space-y-8">
 
+        {/* ── How Do You Use Points? ─────────────────────────────────────── */}
+        <section>
+          <h2 className="text-[11px] uppercase tracking-widest font-bold text-gray-400 mb-1">
+            How Do You Use Points?
+          </h2>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            This changes how point-based rewards (MR, UR, Miles) are valued in recommendations.
+          </p>
+          <div className="space-y-2">
+            {STYLE_OPTIONS.map(style => {
+              const info   = REDEMPTION_STYLE_INFO[style];
+              const active = redemptionStyle === style;
+              return (
+                <button
+                  key={style}
+                  onClick={() => updateRedemptionStyle(style)}
+                  className={`w-full flex items-start gap-3.5 p-4 rounded-2xl border-2 text-left transition-all ${
+                    active ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-white hover:border-gray-200'
+                  }`}
+                >
+                  <div className={`mt-0.5 flex-shrink-0 ${active ? 'text-indigo-600' : 'text-gray-400'}`}>
+                    <TrendingUp size={18}/>
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${active ? 'text-indigo-700' : 'text-gray-800'}`}>
+                      {info.label}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{info.description}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5 italic">{info.example}</p>
+                  </div>
+                  <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                    active ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'
+                  }`}>
+                    {active && <div className="w-2 h-2 bg-white rounded-full"/>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2 px-1">
+            &quot;Balanced&quot; is the default. Switch to &quot;Max Value&quot; if you regularly transfer points to airline partners.
+          </p>
+        </section>
+
         {/* ── Location & Nearby ─────────────────────────────────────────── */}
         <section>
           <h2 className="text-[11px] uppercase tracking-widest font-bold text-gray-400 mb-3">
             Location & Nearby Alerts
           </h2>
 
-          {/* Location toggle */}
           <button
             onClick={toggleLocation}
             className={`w-full flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all mb-2 ${
-              ls.enabled
-                ? 'border-indigo-300 bg-indigo-50'
-                : 'border-gray-100 bg-white'
+              ls.enabled ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-white'
             }`}
           >
             <div className={`flex-shrink-0 ${ls.enabled ? 'text-indigo-600' : 'text-gray-400'}`}>
@@ -100,10 +138,9 @@ export default function SettingsPage() {
                 Detect Nearby Businesses
               </p>
               <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                AutoCard watches your location and surfaces the best card when you're near a restaurant, store, or gas station.
+                AutoCard watches your location and surfaces the best card when you&apos;re near a restaurant, store, or gas station.
               </p>
             </div>
-            {/* Toggle pill */}
             <div className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${
               ls.enabled ? 'bg-indigo-600' : 'bg-gray-200'
             }`}>
@@ -113,14 +150,11 @@ export default function SettingsPage() {
             </div>
           </button>
 
-          {/* Browser notifications sub-toggle — only shown when location is on */}
           {ls.enabled && (
             <button
               onClick={toggleBrowserNotifications}
               className={`w-full flex items-center gap-3.5 p-4 rounded-2xl border-2 text-left transition-all ${
-                ls.browserNotifications
-                  ? 'border-indigo-200 bg-indigo-50/60'
-                  : 'border-gray-100 bg-gray-50'
+                ls.browserNotifications ? 'border-indigo-200 bg-indigo-50/60' : 'border-gray-100 bg-gray-50'
               }`}
             >
               <div className={`flex-shrink-0 ${ls.browserNotifications ? 'text-indigo-500' : 'text-gray-400'}`}>
