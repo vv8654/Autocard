@@ -51,7 +51,22 @@ interface OsmElement {
     amenity?: string;
     shop?: string;
     tourism?: string;
+    'addr:housenumber'?: string;
+    'addr:street'?: string;
+    'addr:suburb'?: string;
+    'addr:neighbourhood'?: string;
+    'addr:city'?: string;
   };
+}
+
+function buildAddress(tags: OsmElement['tags']): string | undefined {
+  if (!tags) return undefined;
+  const num    = tags['addr:housenumber'];
+  const street = tags['addr:street'];
+  const area   = tags['addr:suburb'] ?? tags['addr:neighbourhood'] ?? tags['addr:city'];
+  if (num && street) return area ? `${num} ${street}, ${area}` : `${num} ${street}`;
+  if (street)        return area ? `${street}, ${area}` : street;
+  return undefined;
 }
 
 function buildQuery(lat: number, lon: number, radius: number): string {
@@ -101,7 +116,8 @@ function mapElements(elements: OsmElement[], lat: number, lon: number): NearbyPl
       const osmTag = tags.amenity ?? tags.shop ?? tags.tourism ?? '';
       const category: Category = TAG_MAP[osmTag] ?? detectCategoryFromName(name);
       const distance = haversineMeters(lat, lon, elLat, elLon);
-      return { id: String(el.id), name, category, distance: Math.round(distance) };
+      const address  = buildAddress(el.tags);
+      return { id: String(el.id), name, category, distance: Math.round(distance), address };
     })
     .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
 }

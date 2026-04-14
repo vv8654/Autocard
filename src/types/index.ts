@@ -121,6 +121,7 @@ export interface NearbyPlace {
   name: string;
   category: Category;
   distance?: number;
+  address?: string;   // short address when available from OSM tags
 }
 
 export interface AppState {
