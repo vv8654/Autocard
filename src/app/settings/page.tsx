@@ -1,11 +1,12 @@
 'use client';
 
-import { Bell, BellOff, Zap, MapPin, MapPinOff, TrendingUp } from 'lucide-react';
+import { Bell, BellOff, Zap, MapPin, MapPinOff, TrendingUp, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Category, NotificationFrequency, RedemptionStyle } from '../../types';
 import { BottomNav } from '../../components/BottomNav';
 import { requestNotificationPermission } from '../../lib/location';
 import { REDEMPTION_STYLE_INFO } from '../../lib/pointValues';
+import { PlaidConnect } from '../../components/PlaidConnect';
 
 const FREQUENCY_OPTIONS: {
   value: NotificationFrequency;
@@ -32,7 +33,7 @@ const CATEGORY_OPTIONS: { id: Category; label: string; emoji: string }[] = [
 const STYLE_OPTIONS: RedemptionStyle[] = ['simple', 'balanced', 'max'];
 
 export default function SettingsPage() {
-  const { state, updateNotificationSettings, updateLocationSettings, updateRedemptionStyle } = useApp();
+  const { state, updateNotificationSettings, updateLocationSettings, updateRedemptionStyle, removePlaidConnection } = useApp();
   const { notificationSettings: ns, locationSettings: ls, redemptionStyle } = state;
 
   function setFrequency(frequency: NotificationFrequency) {
@@ -250,11 +251,58 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* ── Connected Accounts ────────────────────────────────────────── */}
+        <section>
+          <h2 className="text-[11px] uppercase tracking-widest font-bold text-gray-400 mb-1">
+            Connected Accounts
+          </h2>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            Link your bank or credit card to import real transactions and get more accurate recommendations.
+          </p>
+
+          {/* Existing connections */}
+          {state.plaidConnections.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {state.plaidConnections.map(conn => (
+                <div
+                  key={conn.id}
+                  className="flex items-center gap-3 p-3.5 bg-white rounded-2xl border border-gray-100"
+                >
+                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center">
+                    <span className="text-lg">🏦</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{conn.institutionName}</p>
+                    <p className="text-xs text-gray-400">
+                      {conn.accounts.length} account{conn.accounts.length !== 1 ? 's' : ''} ·{' '}
+                      {conn.transactions.length} transactions
+                      {conn.lastSynced ? ` · synced ${new Date(conn.lastSynced).toLocaleDateString()}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => removePlaidConnection(conn.id)}
+                    className="flex-shrink-0 p-2 text-gray-300 hover:text-red-400 transition-colors"
+                    aria-label="Remove connection"
+                  >
+                    <Trash2 size={16}/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <PlaidConnect/>
+
+          <p className="text-[11px] text-gray-400 mt-2 px-1 leading-relaxed">
+            Read-only access only. Your credentials are never stored — only an encrypted token is kept locally.
+          </p>
+        </section>
+
         {/* Disclaimer */}
         <section className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
           <p className="text-xs text-gray-400 leading-relaxed">
             <span className="font-semibold text-gray-500">Prototype note:</span> Location uses your browser&apos;s Geolocation API
-            and OpenStreetMap&apos;s free Overpass API. No banking data or real card accounts are used.
+            and OpenStreetMap&apos;s free Overpass API.
           </p>
         </section>
       </div>

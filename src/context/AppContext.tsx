@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react';
 import {
   AppState, Bonus, CreditCard, LocationSettings, ManualLocation,
-  NotificationSettings, RedemptionStyle, Recommendation,
+  NotificationSettings, PlaidConnection, PlaidTransaction, RedemptionStyle, Recommendation,
 } from '../types';
 import { loadState, saveState } from '../lib/storage';
 import { CARDS, PRESET_BONUSES } from '../data/cards';
@@ -21,6 +21,9 @@ interface AppContextValue {
   updateBonusSpend:           (cardId: string, amount: number) => void;
   setManualLocation:          (loc: ManualLocation | null) => void;
   clearHistory:               () => void;
+  addPlaidConnection:         (conn: PlaidConnection) => void;
+  removePlaidConnection:      (itemId: string) => void;
+  updatePlaidTransactions:    (itemId: string, transactions: PlaidTransaction[], lastSynced: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -120,6 +123,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState(prev => ({ ...prev, manualLocation: loc }));
   }
 
+  function addPlaidConnection(conn: PlaidConnection) {
+    setState(prev => ({
+      ...prev,
+      plaidConnections: [
+        // Replace existing connection with same item_id if present
+        ...prev.plaidConnections.filter(c => c.id !== conn.id),
+        conn,
+      ],
+    }));
+  }
+
+  function removePlaidConnection(itemId: string) {
+    setState(prev => ({
+      ...prev,
+      plaidConnections: prev.plaidConnections.filter(c => c.id !== itemId),
+    }));
+  }
+
+  function updatePlaidTransactions(itemId: string, transactions: PlaidTransaction[], lastSynced: string) {
+    setState(prev => ({
+      ...prev,
+      plaidConnections: prev.plaidConnections.map(c =>
+        c.id === itemId ? { ...c, transactions, lastSynced } : c,
+      ),
+    }));
+  }
+
   return (
     <AppContext.Provider value={{
       state, enabledCards,
@@ -129,6 +159,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       activateBonus, deactivateBonus, updateBonusSpend,
       setManualLocation,
       clearHistory,
+      addPlaidConnection,
+      removePlaidConnection,
+      updatePlaidTransactions,
     }}>
       {children}
     </AppContext.Provider>

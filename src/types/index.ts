@@ -124,6 +124,35 @@ export interface NearbyPlace {
   address?: string;   // short address when available from OSM tags
 }
 
+// ── Plaid bank/card connection ───────────────────────────────────────────────
+
+export interface PlaidAccount {
+  id: string;        // Plaid account_id
+  name: string;      // e.g. "Plaid Checking"
+  mask: string;      // last-4 digits
+  type: string;      // depository | credit | loan | investment
+  subtype: string;   // checking | savings | credit card | etc.
+}
+
+export interface PlaidTransaction {
+  id: string;            // Plaid transaction_id
+  date: string;          // YYYY-MM-DD
+  name: string;          // merchant name from Plaid
+  amount: number;        // positive = debit (money out), negative = credit
+  category: Category;    // mapped via plaidCategories.ts
+  rawCategory: string;   // original Plaid personal_finance_category or legacy[0]
+  accountId: string;
+}
+
+export interface PlaidConnection {
+  id: string;                     // item_id from Plaid
+  institutionName: string;        // set by user or derived
+  encryptedToken: string;         // AES-256-GCM encrypted access token
+  accounts: PlaidAccount[];
+  lastSynced: string | null;      // ISO timestamp of last successful sync
+  transactions: PlaidTransaction[];
+}
+
 export interface AppState {
   enabledCardIds: string[];
   notificationSettings: NotificationSettings;
@@ -132,6 +161,7 @@ export interface AppState {
   bonuses: Bonus[];
   redemptionStyle: RedemptionStyle;
   manualLocation: ManualLocation | null;
+  plaidConnections: PlaidConnection[];
 }
 
 // ── Feature: Rotating Category Countdown ────────────────────────────────────

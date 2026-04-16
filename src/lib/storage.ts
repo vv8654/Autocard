@@ -1,4 +1,4 @@
-import { AppState, Bonus, NotificationSettings, LocationSettings, ManualLocation, RedemptionStyle } from '../types';
+import { AppState, Bonus, NotificationSettings, LocationSettings, ManualLocation, PlaidConnection, RedemptionStyle } from '../types';
 import { DEFAULT_ENABLED_CARD_IDS } from '../data/cards';
 
 const STORAGE_KEY = 'autocard_v2';
@@ -18,6 +18,7 @@ const DEFAULT_LOCATION_SETTINGS: LocationSettings = {
 const DEFAULT_REDEMPTION_STYLE: RedemptionStyle = 'balanced';
 const DEFAULT_BONUSES: Bonus[] = [];
 const DEFAULT_MANUAL_LOCATION: ManualLocation | null = null;
+const DEFAULT_PLAID_CONNECTIONS: PlaidConnection[] = [];
 
 export function loadState(): AppState {
   if (typeof window === 'undefined') return defaultState();
@@ -33,6 +34,7 @@ export function loadState(): AppState {
         bonuses:              parsed.bonuses              ?? DEFAULT_BONUSES,
         redemptionStyle:      parsed.redemptionStyle      ?? DEFAULT_REDEMPTION_STYLE,
         manualLocation:       parsed.manualLocation       ?? DEFAULT_MANUAL_LOCATION,
+        plaidConnections:     parsed.plaidConnections     ?? DEFAULT_PLAID_CONNECTIONS,
       };
     }
     // Migrate from v1
@@ -47,6 +49,7 @@ export function loadState(): AppState {
         bonuses:              DEFAULT_BONUSES,
         redemptionStyle:      DEFAULT_REDEMPTION_STYLE,
         manualLocation:       DEFAULT_MANUAL_LOCATION,
+        plaidConnections:     DEFAULT_PLAID_CONNECTIONS,
       };
     }
     return defaultState();
@@ -69,5 +72,6 @@ function defaultState(): AppState {
     bonuses:              DEFAULT_BONUSES,
     redemptionStyle:      DEFAULT_REDEMPTION_STYLE,
     manualLocation:       DEFAULT_MANUAL_LOCATION,
+    plaidConnections:     DEFAULT_PLAID_CONNECTIONS,
   };
 }
