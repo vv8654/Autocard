@@ -177,7 +177,7 @@ export function PlaidConnect({ onSuccess }: Props) {
         <p className="text-xs text-indigo-400 mt-0.5">
           {status === 'error'
             ? <span className="text-red-500">{error}</span>
-            : 'Powered by Plaid — read-only, secure'}
+            : 'Powered by Plaid · read-only · secure'}
         </p>
       </div>
       {status !== 'loading-token' && status !== 'exchanging' && (

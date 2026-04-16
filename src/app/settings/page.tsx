@@ -295,6 +295,17 @@ export default function SettingsPage() {
 
           <p className="text-[11px] text-gray-400 mt-2 px-1 leading-relaxed">
             Read-only access only. Your credentials are never stored — only an encrypted token is kept locally.
+            By connecting, you agree to{' '}
+            <a
+              href="https://plaid.com/legal/#end-user-privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline text-indigo-400"
+            >
+              Plaid&apos;s End User Privacy Policy
+            </a>{' '}
+            and our{' '}
+            <a href="/privacy" className="underline text-indigo-400">Privacy Policy</a>.
           </p>
         </section>
 
