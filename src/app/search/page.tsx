@@ -194,7 +194,7 @@ function RecentRow({ item, onTap }: { item: RecentSearch; onTap: (item: RecentSe
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-type ResultSource = 'nearby' | 'no-nearby' | 'us-wide' | null;
+type ResultSource = 'nearby' | 'no-nearby' | 'api-down' | 'us-wide' | null;
 
 export default function SearchPage() {
   const { enabledCards, addToHistory, state } = useApp();
@@ -268,7 +268,7 @@ export default function SearchPage() {
       debounceRef.current = setTimeout(async () => {
         try {
           const places = await searchNearbyByName(q, userCoords.lat, userCoords.lon);
-          if (searchIdRef.current !== sid) return; // query changed while fetching
+          if (searchIdRef.current !== sid) return;
 
           const seen   = new Set(local.map(r => r.name.toLowerCase()));
           const nearby: SearchResult[] = places
@@ -279,11 +279,13 @@ export default function SearchPage() {
               distance: p.distance, address: p.address,
             }));
 
-          // Nearby results first (sorted by distance already), then local
+          // Nearby results first (sorted by distance), then local fallbacks
           setResults([...nearby, ...local]);
           setResultSource(nearby.length > 0 ? 'nearby' : 'no-nearby');
-        } catch {
-          if (searchIdRef.current === sid) setResultSource('no-nearby');
+        } catch (err) {
+          if (searchIdRef.current !== sid) return;
+          const isApiDown = err instanceof Error && err.message === 'OVERPASS_UNAVAILABLE';
+          setResultSource(isApiDown ? 'api-down' : 'no-nearby');
         } finally {
           if (searchIdRef.current === sid) setNearbyLoading(false);
         }
@@ -415,11 +417,20 @@ export default function SearchPage() {
         )}
 
         {/* Empty state */}
-        {showEmpty && (
+        {showEmpty && resultSource !== 'api-down' && (
           <div className="text-center py-10">
             <p className="text-3xl mb-2">🔍</p>
             <p className="text-gray-500 text-sm font-medium">No results found</p>
             <p className="text-gray-400 text-xs mt-1">Try a different name or browse by category</p>
+          </div>
+        )}
+        {showEmpty && resultSource === 'api-down' && (
+          <div className="mx-auto mt-6 max-w-xs text-center px-4">
+            <p className="text-2xl mb-2">📡</p>
+            <p className="text-gray-600 text-sm font-semibold">Business data unavailable</p>
+            <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+              Couldn&apos;t reach the location database right now. Check your connection and try again.
+            </p>
           </div>
         )}
 
@@ -427,7 +438,7 @@ export default function SearchPage() {
         {hasResults && enabledCards.length > 0 && (
           <div className="space-y-3">
             {/* Context + nearby loading indicator */}
-            <div className="flex items-center justify-between px-1">
+            <div className="flex items-center justify-between px-1 min-h-[18px]">
               <div className="flex items-center gap-1.5">
                 {resultSource === 'nearby' && locationLabel ? (
                   <>
@@ -440,7 +451,14 @@ export default function SearchPage() {
                   <>
                     <MapPin size={10} className="text-amber-400"/>
                     <p className="text-[11px] font-semibold text-amber-500">
-                      Nothing found near {locationLabel}
+                      None found near {locationLabel} — showing general results
+                    </p>
+                  </>
+                ) : resultSource === 'api-down' ? (
+                  <>
+                    <ChevronRight size={10} className="text-rose-400"/>
+                    <p className="text-[11px] font-semibold text-rose-400">
+                      Couldn&apos;t reach business data — showing general results
                     </p>
                   </>
                 ) : resultSource === 'us-wide' ? (

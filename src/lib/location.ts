@@ -204,34 +204,50 @@ export function distanceLabel(meters: number): { label: string; mode: 'walk' | '
 }
 
 /**
- * Searches for businesses matching `query` near a point using Overpass name regex.
- * Tries 15 km first, then expands to 40 km if nothing is found.
- * Uses parallel mirror racing — response time = fastest mirror, not sum.
- * Returns [] when all mirrors fail or nothing matches (caller decides what to show).
+ * Converts a plain-text user query into an Overpass-compatible regex.
+ *
+ * Key transform: insert `'?` before a trailing `s` so that "torchys" matches
+ * "Torchy's Tacos" and "mcdonalds" matches "McDonald's".  Names without a
+ * trailing s (e.g. "chipotle") pass through unchanged.
+ */
+function toOverpassRegex(query: string): string {
+  // Remove only chars that break Overpass QL double-quoted strings
+  const clean = query.replace(/["\\]/g, '').trim();
+  // Make apostrophe-s optional: word-char + s at a word boundary → word-char + '?s
+  return clean.replace(/(\w)s(\s|$)/gi, "$1'?s$2").trim();
+}
+
+/**
+ * Searches for businesses matching `query` near a point.
+ * Searches both `name` and `brand` OSM tags.
+ * Tries 15 km first, expands to 40 km if nothing found.
+ * Throws 'OVERPASS_UNAVAILABLE' when all mirrors fail (distinct from 0 results).
  */
 export async function searchNearbyByName(
   query: string,
   lat: number,
   lon: number,
 ): Promise<NearbyPlace[]> {
-  // Strip chars that break Overpass QL regex / string syntax
-  const safe = query.replace(/["'\\]/g, '').trim();
-  if (!safe) return [];
+  const regex = toOverpassRegex(query);
+  if (!regex) return [];
 
   for (const radius of [15_000, 40_000]) {
+    // Search name AND brand — many chains store the brand separately from the
+    // specific location name (e.g. brand=Torchy's Tacos, name=Torchy's Tacos #14)
     const oql = `[out:json][timeout:${SERVER_TIMEOUT}];(
-nwr["name"~"${safe}",i](around:${radius},${lat},${lon});
+nwr["name"~"${regex}",i](around:${radius},${lat},${lon});
+nwr["brand"~"${regex}",i](around:${radius},${lat},${lon});
 );out body center 20;`;
 
     const elements = await raceFromMirrors(oql);
-    if (elements === null) return []; // all mirrors failed — give up
+    if (elements === null) throw new Error('OVERPASS_UNAVAILABLE');
 
     const places = mapElements(elements, lat, lon).slice(0, 8);
     if (places.length > 0) return places;
-    // 0 results at this radius → try wider
+    // API responded but 0 results — try wider radius
   }
 
-  return [];
+  return []; // genuinely nothing found within 40 km
 }
 
 /**
