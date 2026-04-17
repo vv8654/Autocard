@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X, Zap, Loader2, MapPin, Clock, Navigation } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, X, Zap, Loader2, MapPin, Clock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ALL_MERCHANTS } from '../../data/allMerchants';
 import { detectCategoryFromName } from '../../lib/categoryDetect';
 import { getRecommendation } from '../../lib/recommendation';
-import { fetchNearbyPlaces, searchNearbyByName, distanceLabel } from '../../lib/location';
+import { searchNearbyByName, distanceLabel } from '../../lib/location';
 import { RecommendationModal } from '../../components/RecommendationModal';
 import { BottomNav } from '../../components/BottomNav';
 import { Category, Merchant, Recommendation } from '../../types';
@@ -220,9 +220,7 @@ export default function SearchPage() {
   const { enabledCards, addToHistory, state } = useApp();
   const [query,           setQuery]           = useState('');
   const [results,         setResults]         = useState<SearchResult[]>([]);
-  const [nearbyPlaces,    setNearbyPlaces]    = useState<SearchResult[]>([]);
   const [loading,         setLoading]         = useState(false);
-  const [nearbyLoading,   setNearbyLoading]   = useState(false);
   const [activeRec,       setActiveRec]       = useState<Recommendation | null>(null);
   const [activeCategory,  setActiveCategory]  = useState<Category | null>(null);
   const [userCoords,      setUserCoords]      = useState<{ lat: number; lon: number } | null>(null);
@@ -232,7 +230,6 @@ export default function SearchPage() {
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchIdRef  = useRef(0);
   const inputRef     = useRef<HTMLInputElement>(null);
-  const nearbyFetched = useRef(false);
 
   useEffect(() => { setRecentSearches(loadRecents()); }, []);
 
@@ -250,31 +247,6 @@ export default function SearchPage() {
       );
     }
   }, [state.manualLocation, state.locationSettings.enabled]);
-
-  // Auto-load nearby places when location becomes available
-  const loadNearby = useCallback(async (coords: { lat: number; lon: number }) => {
-    if (nearbyFetched.current) return;
-    nearbyFetched.current = true;
-    setNearbyLoading(true);
-    try {
-      const places = await fetchNearbyPlaces(coords.lat, coords.lon);
-      setNearbyPlaces(places.map(p => ({
-        id: p.id, name: p.name, category: p.category,
-        emoji: CATEGORY_EMOJI[p.category], source: 'osm' as const,
-        distance: p.distance, address: p.address,
-      })));
-    } catch {
-      setApiDown(true);
-    } finally {
-      setNearbyLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (userCoords && !nearbyFetched.current) {
-      loadNearby(userCoords);
-    }
-  }, [userCoords, loadNearby]);
 
   // ── Search logic ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -300,15 +272,7 @@ export default function SearchPage() {
       .slice(0, 5)
       .map(m => ({ id: m.id, name: m.displayName, category: m.category, emoji: m.emoji, source: 'local' as const }));
 
-    // Category chips with location: filter from auto-loaded nearby, no API needed
-    if (activeCategory && !q && userCoords) {
-      const filtered = nearbyPlaces.filter(p => p.category === activeCategory);
-      setResults(filtered.length > 0 ? filtered : local);
-      setNoNearby(filtered.length === 0);
-      return;
-    }
-
-    // Category chips without location: local filter only
+    // Category chips: local filter only
     if (activeCategory && !q) {
       setResults(local);
       return;
@@ -367,7 +331,7 @@ export default function SearchPage() {
       setLoading(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, activeCategory, userCoords, nearbyPlaces]);
+  }, [query, activeCategory, userCoords]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -415,14 +379,6 @@ export default function SearchPage() {
   const locationLabel  = state.manualLocation?.label ?? (userCoords ? 'Near you' : null);
   const isSearching    = !!query.trim() || !!activeCategory;
   const hasResults     = results.length > 0;
-
-  // What to show in the default (no search) state
-  const defaultNearby  = !isSearching && nearbyPlaces.length > 0
-    ? nearbyPlaces
-    : null;
-  const defaultFiltered = !isSearching && activeCategory && nearbyPlaces.length > 0
-    ? nearbyPlaces.filter(p => p.category === activeCategory)
-    : null;
 
   return (
     <div className="pb-24">
@@ -541,44 +497,10 @@ export default function SearchPage() {
           </div>
         )}
 
-        {/* ── DEFAULT STATE: auto-loaded nearby places ─────────────────────── */}
+        {/* ── DEFAULT STATE ─────────────────────────────────────────────────── */}
         {!isSearching && enabledCards.length > 0 && (
-          <div className="space-y-6">
-
-            {/* Nearby loading skeletons */}
-            {nearbyLoading && !locationLabel && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 px-1 mb-1">
-                  <Loader2 size={11} className="text-indigo-400 animate-spin"/>
-                  <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400">Loading nearby…</p>
-                </div>
-                <SkeletonCard/>
-                <SkeletonCard/>
-                <SkeletonCard/>
-              </div>
-            )}
-
-            {/* Nearby places auto-loaded */}
-            {nearbyPlaces.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 px-1">
-                  <Navigation size={11} className="text-emerald-500"/>
-                  <p className="text-[11px] uppercase tracking-widest font-bold text-emerald-600">
-                    Around {locationLabel ?? 'you'}
-                  </p>
-                  {nearbyLoading && <Loader2 size={10} className="text-indigo-400 animate-spin ml-auto"/>}
-                </div>
-                {nearbyPlaces.map(r => (
-                  <ResultCard
-                    key={r.id} result={r} onTap={handleTap}
-                    enabledCards={enabledCards} bonuses={state.bonuses} redemptionStyle={state.redemptionStyle}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Recents */}
-            {recentSearches.length > 0 && nearbyPlaces.length === 0 && (
+          <div className="space-y-5">
+            {recentSearches.length > 0 && (
               <div>
                 <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400 px-1 mb-2">Recent</p>
                 <div className="space-y-2">
@@ -588,33 +510,15 @@ export default function SearchPage() {
                 </div>
               </div>
             )}
-
-            {/* No location prompt */}
-            {!userCoords && !nearbyLoading && nearbyPlaces.length === 0 && (
-              <div className={`text-center px-6 ${recentSearches.length > 0 ? 'py-6' : 'py-12'}`}>
-                <p className="text-4xl mb-3">📍</p>
-                <p className="text-gray-600 font-semibold text-sm">Enable location for nearby results</p>
-                <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-                  Turn on location in Settings, or pin a location on the Home tab to see businesses around you.
-                </p>
-              </div>
-            )}
-
-            {/* API down with location */}
-            {userCoords && !nearbyLoading && nearbyPlaces.length === 0 && apiDown && (
-              <div className="text-center py-10 px-6">
-                <p className="text-3xl mb-2">📡</p>
-                <p className="text-gray-500 text-sm font-semibold">Couldn&apos;t load nearby places</p>
-                <p className="text-gray-400 text-xs mt-1">Check your connection and refresh</p>
-                <button
-                  onClick={() => { nearbyFetched.current = false; setApiDown(false); if (userCoords) loadNearby(userCoords); }}
-                  className="mt-3 px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-full"
-                >
-                  Try again
-                </button>
-              </div>
-            )}
-
+            <div className={`text-center px-6 ${recentSearches.length > 0 ? 'py-4' : 'py-12'}`}>
+              <p className="text-4xl mb-3">🔍</p>
+              <p className="text-gray-600 font-semibold text-sm">Search any business</p>
+              <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                {locationLabel
+                  ? `Nearest locations appear first with the best card to use there.`
+                  : 'Type a business name to find the best card.'}
+              </p>
+            </div>
           </div>
         )}
       </div>
