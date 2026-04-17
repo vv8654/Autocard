@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { X, Zap, ChevronDown, ChevronUp, Gift, Pencil } from 'lucide-react';
+import { X, Zap, ChevronDown, ChevronUp, Gift } from 'lucide-react';
 import { Recommendation, RankedCard } from '../types';
 import { rewardLabel, earnedDollars } from '../lib/displayReward';
 
@@ -12,37 +12,27 @@ interface Props {
 
 export function RecommendationModal({ recommendation, onClose }: Props) {
   const [showAlternatives, setShowAlternatives] = useState(false);
-  const [amount, setAmount]     = useState<number | null>(null);
-  const [editing, setEditing]   = useState(false);
-  const [inputVal, setInputVal] = useState('');
+  const [customAmount, setCustomAmount] = useState<number | null>(null);
+  const [inputVal, setInputVal]         = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset amount whenever a new recommendation opens
   useEffect(() => {
     if (recommendation) {
-      setAmount(null);
-      setEditing(false);
+      setCustomAmount(null);
       setInputVal('');
+      setShowAlternatives(false);
     }
   }, [recommendation?.id]);
 
   if (!recommendation) return null;
 
   const { best, alternatives, explanation, context, isHighValue, bonusContext } = recommendation;
-  const displayAmount = amount ?? context.estimatedAmount;
-  const isCustom = amount !== null;
+  const displayAmount = customAmount ?? context.estimatedAmount;
 
-  function startEdit() {
-    setInputVal(String(displayAmount));
-    setEditing(true);
-    setTimeout(() => inputRef.current?.select(), 0);
-  }
-
-  function commitEdit() {
-    const parsed = parseFloat(inputVal.replace(/[^0-9.]/g, ''));
-    if (!isNaN(parsed) && parsed > 0) setAmount(Math.round(parsed));
-    else setAmount(null);
-    setEditing(false);
+  function handleAmountChange(raw: string) {
+    setInputVal(raw);
+    const parsed = parseFloat(raw.replace(/[^0-9.]/g, ''));
+    setCustomAmount(!isNaN(parsed) && parsed > 0 ? parsed : null);
   }
 
   return (
@@ -62,13 +52,39 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
             <h2 className="text-xl font-black text-gray-900 mt-0.5">
               {context.merchant.emoji} {context.merchant.displayName}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">{context.merchant.scenarioLabel}</p>
           </div>
           <button onClick={onClose}
             className="mt-1 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors flex-shrink-0"
             aria-label="Close">
             <X size={15} />
           </button>
+        </div>
+
+        {/* ── Spend amount input ── */}
+        <div className="mx-4 mb-3">
+          <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3">
+            <div className="flex-1">
+              <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider mb-1">How much are you spending?</p>
+              <div className="flex items-center gap-1">
+                <span className="text-gray-700 text-lg font-bold">$</span>
+                <input
+                  ref={inputRef}
+                  type="number"
+                  inputMode="decimal"
+                  value={inputVal}
+                  onChange={e => handleAmountChange(e.target.value)}
+                  placeholder={String(context.estimatedAmount)}
+                  className="flex-1 bg-transparent text-gray-900 text-lg font-bold outline-none placeholder-gray-300 min-w-0"
+                />
+              </div>
+            </div>
+            {!customAmount && (
+              <div className="text-right flex-shrink-0">
+                <p className="text-[10px] text-gray-400">estimated</p>
+                <p className="text-xs font-semibold text-gray-500">${context.estimatedAmount}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Best Card Block ── */}
@@ -95,43 +111,14 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
 
             <div className="flex items-end gap-6">
               <div>
-                {/* Editable amount row */}
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  {editing ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-white/60 text-xs">on $</span>
-                      <input
-                        ref={inputRef}
-                        type="number"
-                        inputMode="decimal"
-                        value={inputVal}
-                        onChange={e => setInputVal(e.target.value)}
-                        onBlur={commitEdit}
-                        onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
-                        className="w-20 bg-white/20 text-white text-xs font-semibold rounded-lg px-2 py-1 outline-none border border-white/40 placeholder-white/40"
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      onClick={startEdit}
-                      className="flex items-center gap-1 group"
-                    >
-                      <span className="text-white/60 text-xs">
-                        on ${displayAmount}{isCustom ? '' : ' est.'}
-                      </span>
-                      <Pencil size={10} className="text-white/40 group-hover:text-white/70 transition-colors" />
-                    </button>
-                  )}
-                </div>
-
+                <p className="text-white/60 text-xs mb-0.5">on ${displayAmount} purchase</p>
                 <p className="text-white text-4xl font-black leading-none">
                   ≈{earnedDollars(best.effectiveCPD, displayAmount)}
                 </p>
                 <p className="text-white/70 text-sm font-semibold mt-0.5">earned back</p>
               </div>
-
               <div className="pb-0.5 border-l border-white/20 pl-6">
-                <p className="text-white/60 text-xs">reward rate</p>
+                <p className="text-white/60 text-xs">rate</p>
                 <p className="text-white text-xl font-bold">{best.effectiveCPD.toFixed(1)}¢</p>
                 <p className="text-white/60 text-xs">per dollar</p>
               </div>
@@ -209,19 +196,16 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
 
 function AlternativeRow({ ranked, amount }: { ranked: RankedCard; amount: number }) {
   const { card, multiplier, effectiveCPD, baseCPD, bonusApplied, rank } = ranked;
-  const isZero = effectiveCPD <= 1.0;
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-xl bg-gray-50 ${isZero ? 'opacity-60' : ''}`}>
+    <div className={`flex items-center gap-3 p-3 rounded-xl bg-gray-50 ${effectiveCPD <= 1.0 ? 'opacity-60' : ''}`}>
       <span className="text-gray-400 text-xs font-bold w-4 text-center flex-shrink-0">{rank}</span>
       <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${card.gradient} flex-shrink-0`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-semibold text-gray-900 truncate">{card.shortName}</p>
           {bonusApplied && (
-            <span className="text-[9px] font-bold text-violet-500 bg-violet-100 px-1 py-0.5 rounded-full flex-shrink-0">
-              +bonus
-            </span>
+            <span className="text-[9px] font-bold text-violet-500 bg-violet-100 px-1 py-0.5 rounded-full flex-shrink-0">+bonus</span>
           )}
         </div>
         <p className="text-xs text-gray-500">{rewardLabel(card.rewardsType, multiplier)}</p>

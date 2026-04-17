@@ -87,14 +87,11 @@ function NearbyPlaceRow({
       {rec ? (
         <div className="flex-shrink-0 flex flex-col items-end gap-1">
           <div className={`w-10 h-6 rounded-md bg-gradient-to-br ${rec.best.card.gradient} shadow-sm`}/>
-          <div className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${
-            rec.isHighValue ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-          }`}>
-            {rec.isHighValue && <Zap size={8}/>}
-            {rewardLabel(rec.best.card.rewardsType, rec.best.multiplier)}
-          </div>
-          <p className="text-[10px] text-emerald-600 font-semibold">
+          <p className={`text-[11px] font-bold ${rec.isHighValue ? 'text-green-600' : 'text-gray-700'}`}>
             {earnedDollars(rec.best.effectiveCPD, rec.context.estimatedAmount)} back
+          </p>
+          <p className="text-[10px] text-gray-400">
+            on ${rec.context.estimatedAmount}
           </p>
         </div>
       ) : (
