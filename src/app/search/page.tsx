@@ -84,27 +84,40 @@ interface NominatimHit {
   extratags?: Record<string, string>;
 }
 
-async function searchNominatim(query: string): Promise<SearchResult[]> {
+const NOMINATIM_TAG_MAP: Record<string, Category> = {
+  restaurant: 'dining', cafe: 'dining', fast_food: 'dining', bar: 'dining',
+  pub: 'dining', food_court: 'dining', ice_cream: 'dining', bakery: 'dining',
+  pharmacy: 'pharmacy', fuel: 'gas', supermarket: 'grocery', convenience: 'grocery',
+  grocery: 'grocery', greengrocer: 'grocery', hotel: 'travel', hostel: 'travel',
+  motel: 'travel', bus_station: 'transit', car_rental: 'transit',
+};
+
+function parseNominatimHit(h: NominatimHit): SearchResult {
+  const parts   = h.display_name.split(',');
+  const name    = parts[0].trim();
+  const address = parts.slice(1, 3).map(s => s.trim()).filter(Boolean).join(', ') || undefined;
+  const amenity = h.extratags?.amenity ?? '';
+  const shop    = h.extratags?.shop    ?? '';
+  const cat: Category = NOMINATIM_TAG_MAP[amenity] ?? NOMINATIM_TAG_MAP[shop] ?? detectCategoryFromName(name);
+  return { id: String(h.place_id), name, category: cat, emoji: CATEGORY_EMOJI[cat], source: 'osm' as const, address };
+}
+
+// Nominatim search — optionally location-biased with viewbox
+async function searchNominatim(
+  query: string,
+  coords?: { lat: number; lon: number },
+): Promise<SearchResult[]> {
+  // viewbox biases results toward the user's area (bounded=0 still allows outside)
+  const viewbox = coords
+    ? `&viewbox=${coords.lon - 0.5},${coords.lat + 0.5},${coords.lon + 0.5},${coords.lat - 0.5}&bounded=0`
+    : '';
   const url =
     `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}` +
-    `&format=json&limit=6&addressdetails=1&extratags=1&countrycodes=us`;
+    `&format=json&limit=8&addressdetails=1&extratags=1&countrycodes=us${viewbox}`;
   const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'AutoCard/1.0' } });
   if (!res.ok) return [];
   const hits: NominatimHit[] = await res.json();
-  const TAG_MAP: Record<string, Category> = {
-    restaurant: 'dining', cafe: 'dining', fast_food: 'dining', bar: 'dining', pub: 'dining',
-    pharmacy: 'pharmacy', fuel: 'gas', supermarket: 'grocery', convenience: 'grocery',
-    hotel: 'travel', hostel: 'travel',
-  };
-  return hits.filter(h => h.display_name).map(h => {
-    const parts   = h.display_name.split(',');
-    const name    = parts[0].trim();
-    const address = parts.slice(1, 3).map(s => s.trim()).filter(Boolean).join(', ') || undefined;
-    const amenity = h.extratags?.amenity ?? '';
-    const shop    = h.extratags?.shop    ?? '';
-    const cat: Category = TAG_MAP[amenity] ?? TAG_MAP[shop] ?? detectCategoryFromName(name);
-    return { id: String(h.place_id), name, category: cat, emoji: CATEGORY_EMOJI[cat], source: 'osm' as const, address };
-  });
+  return hits.filter(h => h.display_name).map(parseNominatimHit);
 }
 
 // ── Result card ───────────────────────────────────────────────────────────────
@@ -226,7 +239,6 @@ export default function SearchPage() {
   const [userCoords,      setUserCoords]      = useState<{ lat: number; lon: number } | null>(null);
   const [recentSearches,  setRecentSearches]  = useState<RecentSearch[]>([]);
   const [noNearby,        setNoNearby]        = useState(false);
-  const [apiDown,         setApiDown]         = useState(false);
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchIdRef  = useRef(0);
   const inputRef     = useRef<HTMLInputElement>(null);
@@ -257,8 +269,7 @@ export default function SearchPage() {
       searchIdRef.current++;
       setResults([]);
       setNoNearby(false);
-      setApiDown(false);
-      setLoading(false);
+            setLoading(false);
       return;
     }
 
@@ -281,49 +292,49 @@ export default function SearchPage() {
     // Typed query: show local instantly, then fire async
     setResults(local);
     setNoNearby(false);
-    setApiDown(false);
-
+    
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const sid = ++searchIdRef.current;
     setLoading(true);
 
-    if (userCoords) {
-      debounceRef.current = setTimeout(async () => {
-        try {
-          const places = await searchNearbyByName(q, userCoords.lat, userCoords.lon);
-          if (searchIdRef.current !== sid) return;
-          const seen    = new Set(local.map(r => r.name.toLowerCase()));
-          const nearby: SearchResult[] = places
-            .filter(p => !seen.has(p.name.toLowerCase()))
-            .map(p => ({
+    debounceRef.current = setTimeout(async () => {
+      try {
+        let apiResults: SearchResult[] = [];
+
+        if (userCoords) {
+          try {
+            // Try Overpass first — fast, true proximity
+            const places = await searchNearbyByName(q, userCoords.lat, userCoords.lon);
+            apiResults = places.map(p => ({
               id: p.id, name: p.name, category: p.category,
               emoji: CATEGORY_EMOJI[p.category], source: 'osm' as const,
               distance: p.distance, address: p.address,
             }));
-          setResults([...nearby, ...local]);
-          setNoNearby(nearby.length === 0 && local.length === 0);
-        } catch (err) {
-          if (searchIdRef.current !== sid) return;
-          const isDown = err instanceof Error && err.message === 'OVERPASS_UNAVAILABLE';
-          setApiDown(isDown);
-          setResults(local);
-        } finally {
-          if (searchIdRef.current === sid) setLoading(false);
+          } catch {
+            // Overpass down → fall back to location-biased Nominatim
+            apiResults = await searchNominatim(q, userCoords);
+          }
+        } else {
+          // No location → Nominatim US-wide
+          apiResults = await searchNominatim(q);
         }
-      }, 350);
-    } else {
-      if (local.length >= 3) { setLoading(false); return; }
-      debounceRef.current = setTimeout(async () => {
-        try {
-          const hits = await searchNominatim(q);
-          if (searchIdRef.current !== sid) return;
-          const seen   = new Set(local.map(r => r.name.toLowerCase()));
-          const deduped = hits.filter(r => !seen.has(r.name.toLowerCase())).slice(0, 4);
-          setResults([...local, ...deduped]);
-        } catch { /* silent */ }
-        finally { if (searchIdRef.current === sid) setLoading(false); }
-      }, 350);
-    }
+
+        if (searchIdRef.current !== sid) return;
+        const seen    = new Set(local.map(r => r.name.toLowerCase()));
+        const deduped = apiResults.filter(r => !seen.has(r.name.toLowerCase()));
+        // Nearby (with distance) first, then local DB matches
+        const withDist    = deduped.filter(r => r.distance != null);
+        const withoutDist = deduped.filter(r => r.distance == null);
+        setResults([...withDist, ...local, ...withoutDist]);
+        setNoNearby(withDist.length === 0 && local.length === 0 && withoutDist.length === 0);
+      } catch {
+        if (searchIdRef.current !== sid) return;
+        setResults(local);
+        setNoNearby(local.length === 0);
+      } finally {
+        if (searchIdRef.current === sid) setLoading(false);
+      }
+    }, 350);
 
     return () => {
       searchIdRef.current++;
@@ -369,8 +380,7 @@ export default function SearchPage() {
     setActiveCategory(null);
     setResults([]);
     setNoNearby(false);
-    setApiDown(false);
-    setLoading(false);
+        setLoading(false);
     inputRef.current?.focus();
   }
 
@@ -451,9 +461,7 @@ export default function SearchPage() {
                     ? `${results.length} result${results.length !== 1 ? 's' : ''}${locationLabel ? ` near ${locationLabel}` : ''}`
                     : noNearby
                       ? `None near ${locationLabel ?? 'you'}`
-                      : apiDown
-                        ? 'Location data unavailable'
-                        : 'Searching…'
+                      : 'Searching…'
                 }
               </p>
               {loading && (
@@ -483,15 +491,8 @@ export default function SearchPage() {
             {noNearby && !hasResults && !loading && (
               <div className="text-center py-8">
                 <p className="text-3xl mb-2">🔍</p>
-                <p className="text-gray-500 text-sm font-medium">No results found nearby</p>
-                <p className="text-gray-400 text-xs mt-1">Try a broader term or different category</p>
-              </div>
-            )}
-            {apiDown && (
-              <div className="mx-auto text-center px-4 py-4">
-                <p className="text-2xl mb-1">📡</p>
-                <p className="text-gray-500 text-sm font-semibold">Location search unavailable</p>
-                <p className="text-gray-400 text-xs mt-1">Check your connection and try again</p>
+                <p className="text-gray-500 text-sm font-medium">No results found</p>
+                <p className="text-gray-400 text-xs mt-1">Try a different name or spelling</p>
               </div>
             )}
           </div>
