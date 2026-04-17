@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Search, X, Zap, Loader2, MapPin, Clock, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, X, Zap, Loader2, MapPin, Clock, Navigation } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ALL_MERCHANTS } from '../../data/allMerchants';
 import { detectCategoryFromName } from '../../lib/categoryDetect';
 import { getRecommendation } from '../../lib/recommendation';
-import { searchNearbyByName, distanceLabel } from '../../lib/location';
+import { fetchNearbyPlaces, searchNearbyByName, distanceLabel } from '../../lib/location';
 import { RecommendationModal } from '../../components/RecommendationModal';
 import { BottomNav } from '../../components/BottomNav';
 import { Category, Merchant, Recommendation } from '../../types';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SearchResult {
   id: string;
@@ -32,26 +32,9 @@ interface RecentSearch {
   timestamp: number;
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const RECENT_KEY = 'autocard_recent_searches';
-
-function loadRecents(): RecentSearch[] {
-  if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as RecentSearch[]; }
-  catch { return []; }
-}
-
-function saveRecent(r: SearchResult): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const prev = loadRecents().filter(x => x.id !== r.id).slice(0, 5);
-    localStorage.setItem(RECENT_KEY, JSON.stringify([
-      { id: r.id, name: r.name, category: r.category, emoji: r.emoji, address: r.address, timestamp: Date.now() },
-      ...prev,
-    ]));
-  } catch { /* ignore */ }
-}
-
-// ── Constants ────────────────────────────────────────────────────────────────
 
 const CATEGORY_EMOJI: Record<Category, string> = {
   dining: '🍽️', grocery: '🛒', travel: '✈️', transit: '🚗',
@@ -74,13 +57,30 @@ const QUICK_CATEGORIES: { category: Category; label: string; emoji: string }[] =
   { category: 'online',    label: 'Online',    emoji: '📦' },
 ];
 
-// ── Nominatim US-wide fallback (only used when no location is set) ────────────
+// ── Persistence ───────────────────────────────────────────────────────────────
+
+function loadRecents(): RecentSearch[] {
+  if (typeof window === 'undefined') return [];
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as RecentSearch[]; }
+  catch { return []; }
+}
+
+function saveRecent(r: SearchResult): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const prev = loadRecents().filter(x => x.id !== r.id).slice(0, 5);
+    localStorage.setItem(RECENT_KEY, JSON.stringify([
+      { id: r.id, name: r.name, category: r.category, emoji: r.emoji, address: r.address, timestamp: Date.now() },
+      ...prev,
+    ]));
+  } catch { /* ignore */ }
+}
+
+// ── Nominatim fallback (no location only) ─────────────────────────────────────
 
 interface NominatimHit {
   place_id: number;
   display_name: string;
-  type: string;
-  class: string;
   extratags?: Record<string, string>;
 }
 
@@ -124,7 +124,7 @@ function ResultCard({
     category: result.category, emoji: result.emoji,
     scenarioLabel: CATEGORY_LABEL[result.category],
   };
-  const rec = getRecommendation(
+  const rec  = getRecommendation(
     { merchantId: result.id, merchant, estimatedAmount: 50 },
     enabledCards, bonuses, redemptionStyle,
   );
@@ -142,9 +142,12 @@ function ResultCard({
       <div className="flex-1 min-w-0">
         <p className="font-bold text-gray-900 text-sm leading-tight truncate">{result.name}</p>
         {result.address && (
-          <p className="text-[11px] text-gray-500 truncate mt-0.5">{result.address}</p>
+          <p className="text-[11px] text-gray-400 truncate mt-0.5 flex items-center gap-1">
+            <MapPin size={9} className="flex-shrink-0 text-gray-300"/>
+            {result.address}
+          </p>
         )}
-        <div className="flex items-center gap-1.5 mt-1">
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           <span className="text-[11px] text-gray-400">{CATEGORY_LABEL[result.category]}</span>
           {dist && (
             <span className={`text-[11px] font-semibold ${dist.mode === 'drive' ? 'text-sky-500' : 'text-emerald-500'}`}>
@@ -170,7 +173,26 @@ function ResultCard({
   );
 }
 
-// ── Recent search row ─────────────────────────────────────────────────────────
+// ── Skeleton card ─────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <div className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl border border-gray-100 animate-pulse">
+      <div className="w-11 h-11 bg-gray-100 rounded-xl flex-shrink-0"/>
+      <div className="flex-1 space-y-2">
+        <div className="h-3 bg-gray-100 rounded-full w-2/3"/>
+        <div className="h-2.5 bg-gray-100 rounded-full w-1/2"/>
+        <div className="h-2 bg-gray-100 rounded-full w-1/3"/>
+      </div>
+      <div className="flex-shrink-0 space-y-1.5 items-end flex flex-col">
+        <div className="w-10 h-6 bg-gray-100 rounded-md"/>
+        <div className="w-12 h-4 bg-gray-100 rounded-full"/>
+      </div>
+    </div>
+  );
+}
+
+// ── Recent row ────────────────────────────────────────────────────────────────
 
 function RecentRow({ item, onTap }: { item: RecentSearch; onTap: (item: RecentSearch) => void }) {
   return (
@@ -192,27 +214,29 @@ function RecentRow({ item, onTap }: { item: RecentSearch; onTap: (item: RecentSe
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
-
-type ResultSource = 'nearby' | 'no-nearby' | 'api-down' | 'us-wide' | null;
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SearchPage() {
   const { enabledCards, addToHistory, state } = useApp();
-  const [query,          setQuery]          = useState('');
-  const [results,        setResults]        = useState<SearchResult[]>([]);
-  const [nearbyLoading,  setNearbyLoading]  = useState(false);
-  const [activeRec,      setActiveRec]      = useState<Recommendation | null>(null);
-  const [activeCategory, setActiveCategory] = useState<Category | null>(null);
-  const [userCoords,     setUserCoords]     = useState<{ lat: number; lon: number } | null>(null);
-  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
-  const [resultSource,   setResultSource]   = useState<ResultSource>(null);
+  const [query,           setQuery]           = useState('');
+  const [results,         setResults]         = useState<SearchResult[]>([]);
+  const [nearbyPlaces,    setNearbyPlaces]    = useState<SearchResult[]>([]);
+  const [loading,         setLoading]         = useState(false);
+  const [nearbyLoading,   setNearbyLoading]   = useState(false);
+  const [activeRec,       setActiveRec]       = useState<Recommendation | null>(null);
+  const [activeCategory,  setActiveCategory]  = useState<Category | null>(null);
+  const [userCoords,      setUserCoords]      = useState<{ lat: number; lon: number } | null>(null);
+  const [recentSearches,  setRecentSearches]  = useState<RecentSearch[]>([]);
+  const [noNearby,        setNoNearby]        = useState(false);
+  const [apiDown,         setApiDown]         = useState(false);
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchIdRef  = useRef(0);           // cancels stale async searches
+  const searchIdRef  = useRef(0);
   const inputRef     = useRef<HTMLInputElement>(null);
+  const nearbyFetched = useRef(false);
 
   useEffect(() => { setRecentSearches(loadRecents()); }, []);
 
-  // Resolve location: manual pin > live GPS
+  // Resolve location
   useEffect(() => {
     if (state.manualLocation) {
       setUserCoords({ lat: state.manualLocation.lat, lon: state.manualLocation.lon });
@@ -221,27 +245,52 @@ export default function SearchPage() {
     if (state.locationSettings.enabled && typeof navigator !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => setUserCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-        () => { /* silent */ },
+        () => {},
         { timeout: 6_000, maximumAge: 120_000 },
       );
     }
   }, [state.manualLocation, state.locationSettings.enabled]);
 
-  // ── Two-phase search ──────────────────────────────────────────────────────
+  // Auto-load nearby places when location becomes available
+  const loadNearby = useCallback(async (coords: { lat: number; lon: number }) => {
+    if (nearbyFetched.current) return;
+    nearbyFetched.current = true;
+    setNearbyLoading(true);
+    try {
+      const places = await fetchNearbyPlaces(coords.lat, coords.lon);
+      setNearbyPlaces(places.map(p => ({
+        id: p.id, name: p.name, category: p.category,
+        emoji: CATEGORY_EMOJI[p.category], source: 'osm' as const,
+        distance: p.distance, address: p.address,
+      })));
+    } catch {
+      setApiDown(true);
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (userCoords && !nearbyFetched.current) {
+      loadNearby(userCoords);
+    }
+  }, [userCoords, loadNearby]);
+
+  // ── Search logic ──────────────────────────────────────────────────────────
   useEffect(() => {
     const q = query.trim();
 
-    // Clear everything when input is empty
     if (!q && !activeCategory) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       searchIdRef.current++;
       setResults([]);
-      setNearbyLoading(false);
-      setResultSource(null);
+      setNoNearby(false);
+      setApiDown(false);
+      setLoading(false);
       return;
     }
 
-    // ── Phase 1: local DB results — synchronous, no delay ──────────────────
+    // Phase 1: local DB — instant
     const local: SearchResult[] = ALL_MERCHANTS
       .filter(m => {
         const matchesQ   = !q || m.name.toLowerCase().includes(q.toLowerCase());
@@ -251,26 +300,35 @@ export default function SearchPage() {
       .slice(0, 5)
       .map(m => ({ id: m.id, name: m.displayName, category: m.category, emoji: m.emoji, source: 'local' as const }));
 
+    // Category chips with location: filter from auto-loaded nearby, no API needed
+    if (activeCategory && !q && userCoords) {
+      const filtered = nearbyPlaces.filter(p => p.category === activeCategory);
+      setResults(filtered.length > 0 ? filtered : local);
+      setNoNearby(filtered.length === 0);
+      return;
+    }
+
+    // Category chips without location: local filter only
+    if (activeCategory && !q) {
+      setResults(local);
+      return;
+    }
+
+    // Typed query: show local instantly, then fire async
     setResults(local);
-    setResultSource(null);
+    setNoNearby(false);
+    setApiDown(false);
 
-    // Category chips: no API calls needed — local filter is the full answer
-    if (activeCategory || !q) return;
-
-    // ── Phase 2: async API search (debounced) ─────────────────────────────
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const sid = ++searchIdRef.current;
+    setLoading(true);
 
     if (userCoords) {
-      // Has location → Overpass proximity search only (NEVER fall back to Nominatim)
-      setNearbyLoading(true);
-
       debounceRef.current = setTimeout(async () => {
         try {
           const places = await searchNearbyByName(q, userCoords.lat, userCoords.lon);
           if (searchIdRef.current !== sid) return;
-
-          const seen   = new Set(local.map(r => r.name.toLowerCase()));
+          const seen    = new Set(local.map(r => r.name.toLowerCase()));
           const nearby: SearchResult[] = places
             .filter(p => !seen.has(p.name.toLowerCase()))
             .map(p => ({
@@ -278,45 +336,40 @@ export default function SearchPage() {
               emoji: CATEGORY_EMOJI[p.category], source: 'osm' as const,
               distance: p.distance, address: p.address,
             }));
-
-          // Nearby results first (sorted by distance), then local fallbacks
           setResults([...nearby, ...local]);
-          setResultSource(nearby.length > 0 ? 'nearby' : 'no-nearby');
+          setNoNearby(nearby.length === 0 && local.length === 0);
         } catch (err) {
           if (searchIdRef.current !== sid) return;
-          const isApiDown = err instanceof Error && err.message === 'OVERPASS_UNAVAILABLE';
-          setResultSource(isApiDown ? 'api-down' : 'no-nearby');
+          const isDown = err instanceof Error && err.message === 'OVERPASS_UNAVAILABLE';
+          setApiDown(isDown);
+          setResults(local);
         } finally {
-          if (searchIdRef.current === sid) setNearbyLoading(false);
+          if (searchIdRef.current === sid) setLoading(false);
         }
       }, 350);
-
     } else {
-      // No location → Nominatim US-wide fallback (only when local results are sparse)
-      if (local.length >= 3) return;
-
+      if (local.length >= 3) { setLoading(false); return; }
       debounceRef.current = setTimeout(async () => {
         try {
           const hits = await searchNominatim(q);
           if (searchIdRef.current !== sid) return;
-
           const seen   = new Set(local.map(r => r.name.toLowerCase()));
           const deduped = hits.filter(r => !seen.has(r.name.toLowerCase())).slice(0, 4);
-          if (deduped.length > 0) {
-            setResults([...local, ...deduped]);
-            setResultSource('us-wide');
-          }
+          setResults([...local, ...deduped]);
         } catch { /* silent */ }
+        finally { if (searchIdRef.current === sid) setLoading(false); }
       }, 350);
     }
 
     return () => {
       searchIdRef.current++;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      setNearbyLoading(false);
+      setLoading(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, activeCategory, userCoords]);
+  }, [query, activeCategory, userCoords, nearbyPlaces]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   function handleTap(rec: Recommendation, result: SearchResult) {
     addToHistory(rec);
@@ -343,7 +396,7 @@ export default function SearchPage() {
   }
 
   function handleCategoryTap(cat: Category) {
-    setActiveCategory(prev => (prev === cat ? null : cat));
+    setActiveCategory(prev => prev === cat ? null : cat);
     setQuery('');
   }
 
@@ -351,25 +404,36 @@ export default function SearchPage() {
     setQuery('');
     setActiveCategory(null);
     setResults([]);
-    setResultSource(null);
-    setNearbyLoading(false);
+    setNoNearby(false);
+    setApiDown(false);
+    setLoading(false);
     inputRef.current?.focus();
   }
 
-  const locationLabel = state.manualLocation?.label ?? (userCoords ? 'Near you' : null);
-  const hasResults    = results.length > 0;
-  const showEmpty     = !nearbyLoading && (query.trim() || activeCategory) && !hasResults;
+  // ── Derived state ─────────────────────────────────────────────────────────
+
+  const locationLabel  = state.manualLocation?.label ?? (userCoords ? 'Near you' : null);
+  const isSearching    = !!query.trim() || !!activeCategory;
+  const hasResults     = results.length > 0;
+
+  // What to show in the default (no search) state
+  const defaultNearby  = !isSearching && nearbyPlaces.length > 0
+    ? nearbyPlaces
+    : null;
+  const defaultFiltered = !isSearching && activeCategory && nearbyPlaces.length > 0
+    ? nearbyPlaces.filter(p => p.category === activeCategory)
+    : null;
 
   return (
     <div className="pb-24">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 px-4 pt-14 pb-5">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-white text-2xl font-black">Search</h1>
           {locationLabel && (
-            <div className="flex items-center gap-1 bg-white/10 rounded-full px-2.5 py-1">
-              <MapPin size={10} className="text-emerald-300"/>
-              <span className="text-emerald-300 text-[10px] font-semibold truncate max-w-[90px]">
+            <div className="flex items-center gap-1.5 bg-white/15 rounded-full px-3 py-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+              <span className="text-white text-[11px] font-semibold truncate max-w-[100px]">
                 {locationLabel}
               </span>
             </div>
@@ -385,6 +449,9 @@ export default function SearchPage() {
             placeholder={locationLabel ? `Search near ${locationLabel}…` : 'Search any business…'}
             className="w-full bg-white rounded-2xl pl-10 pr-10 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none shadow-sm"
           />
+          {loading && !query && (
+            <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin"/>
+          )}
           {(query || activeCategory) && (
             <button onClick={clearSearch}
               className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-500">
@@ -396,7 +463,7 @@ export default function SearchPage() {
 
       <div className="px-4 pt-4">
         {/* Category chips */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide mb-5">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide mb-5 -mx-4 px-4">
           {QUICK_CATEGORIES.map(({ category, label, emoji }) => (
             <button key={category} onClick={() => handleCategoryTap(category)}
               className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold border transition-all ${
@@ -416,66 +483,24 @@ export default function SearchPage() {
           </div>
         )}
 
-        {/* Empty state */}
-        {showEmpty && resultSource !== 'api-down' && (
-          <div className="text-center py-10">
-            <p className="text-3xl mb-2">🔍</p>
-            <p className="text-gray-500 text-sm font-medium">No results found</p>
-            <p className="text-gray-400 text-xs mt-1">Try a different name or browse by category</p>
-          </div>
-        )}
-        {showEmpty && resultSource === 'api-down' && (
-          <div className="mx-auto mt-6 max-w-xs text-center px-4">
-            <p className="text-2xl mb-2">📡</p>
-            <p className="text-gray-600 text-sm font-semibold">Business data unavailable</p>
-            <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-              Couldn&apos;t reach the location database right now. Check your connection and try again.
-            </p>
-          </div>
-        )}
-
-        {/* Results */}
-        {hasResults && enabledCards.length > 0 && (
+        {/* ── SEARCH RESULTS ──────────────────────────────────────────────── */}
+        {isSearching && enabledCards.length > 0 && (
           <div className="space-y-3">
-            {/* Context + nearby loading indicator */}
+            {/* Status row */}
             <div className="flex items-center justify-between px-1 min-h-[18px]">
-              <div className="flex items-center gap-1.5">
-                {resultSource === 'nearby' && locationLabel ? (
-                  <>
-                    <MapPin size={10} className="text-emerald-500"/>
-                    <p className="text-[11px] uppercase tracking-widest font-bold text-emerald-600">
-                      Near {locationLabel}
-                    </p>
-                  </>
-                ) : resultSource === 'no-nearby' && locationLabel ? (
-                  <>
-                    <MapPin size={10} className="text-amber-400"/>
-                    <p className="text-[11px] font-semibold text-amber-500">
-                      None found near {locationLabel} — showing general results
-                    </p>
-                  </>
-                ) : resultSource === 'api-down' ? (
-                  <>
-                    <ChevronRight size={10} className="text-rose-400"/>
-                    <p className="text-[11px] font-semibold text-rose-400">
-                      Couldn&apos;t reach business data — showing general results
-                    </p>
-                  </>
-                ) : resultSource === 'us-wide' ? (
-                  <>
-                    <ChevronRight size={10} className="text-gray-400"/>
-                    <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400">
-                      US results · pin a location for nearby
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400">
-                    {results.length} result{results.length !== 1 ? 's' : ''}
-                    {activeCategory ? ` · ${CATEGORY_LABEL[activeCategory]}` : ''}
-                  </p>
-                )}
-              </div>
-              {nearbyLoading && (
+              <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400">
+                {activeCategory && !query
+                  ? `${CATEGORY_LABEL[activeCategory]} ${locationLabel ? `near ${locationLabel}` : ''}`
+                  : hasResults
+                    ? `${results.length} result${results.length !== 1 ? 's' : ''}${locationLabel ? ` near ${locationLabel}` : ''}`
+                    : noNearby
+                      ? `None near ${locationLabel ?? 'you'}`
+                      : apiDown
+                        ? 'Location data unavailable'
+                        : 'Searching…'
+                }
+              </p>
+              {loading && (
                 <div className="flex items-center gap-1">
                   <Loader2 size={10} className="text-indigo-400 animate-spin"/>
                   <span className="text-[10px] text-indigo-400">Searching nearby…</span>
@@ -483,20 +508,78 @@ export default function SearchPage() {
               )}
             </div>
 
+            {/* Skeleton while loading and no local results yet */}
+            {loading && !hasResults && (
+              <>
+                <SkeletonCard/>
+                <SkeletonCard/>
+                <SkeletonCard/>
+              </>
+            )}
+
             {results.map(r => (
               <ResultCard
                 key={r.id} result={r} onTap={handleTap}
                 enabledCards={enabledCards} bonuses={state.bonuses} redemptionStyle={state.redemptionStyle}
               />
             ))}
+
+            {noNearby && !hasResults && !loading && (
+              <div className="text-center py-8">
+                <p className="text-3xl mb-2">🔍</p>
+                <p className="text-gray-500 text-sm font-medium">No results found nearby</p>
+                <p className="text-gray-400 text-xs mt-1">Try a broader term or different category</p>
+              </div>
+            )}
+            {apiDown && (
+              <div className="mx-auto text-center px-4 py-4">
+                <p className="text-2xl mb-1">📡</p>
+                <p className="text-gray-500 text-sm font-semibold">Location search unavailable</p>
+                <p className="text-gray-400 text-xs mt-1">Check your connection and try again</p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Default state */}
-        {!query && !activeCategory && enabledCards.length > 0 && (
-          <div>
-            {recentSearches.length > 0 && (
-              <div className="mb-6">
+        {/* ── DEFAULT STATE: auto-loaded nearby places ─────────────────────── */}
+        {!isSearching && enabledCards.length > 0 && (
+          <div className="space-y-6">
+
+            {/* Nearby loading skeletons */}
+            {nearbyLoading && !locationLabel && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1 mb-1">
+                  <Loader2 size={11} className="text-indigo-400 animate-spin"/>
+                  <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400">Loading nearby…</p>
+                </div>
+                <SkeletonCard/>
+                <SkeletonCard/>
+                <SkeletonCard/>
+              </div>
+            )}
+
+            {/* Nearby places auto-loaded */}
+            {nearbyPlaces.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1">
+                  <Navigation size={11} className="text-emerald-500"/>
+                  <p className="text-[11px] uppercase tracking-widest font-bold text-emerald-600">
+                    Around {locationLabel ?? 'you'}
+                  </p>
+                  {nearbyLoading && <Loader2 size={10} className="text-indigo-400 animate-spin ml-auto"/>}
+                </div>
+                {nearbyPlaces.map(r => (
+                  <ResultCard
+                    key={r.id} result={r} onTap={handleTap}
+                    enabledCards={enabledCards} bonuses={state.bonuses} redemptionStyle={state.redemptionStyle}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Recents */}
+            {recentSearches.length > 0 && nearbyPlaces.length === 0 && (
+              <div>
                 <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400 px-1 mb-2">Recent</p>
                 <div className="space-y-2">
                   {recentSearches.map(item => (
@@ -505,15 +588,33 @@ export default function SearchPage() {
                 </div>
               </div>
             )}
-            <div className={`text-center px-6 ${recentSearches.length > 0 ? 'py-4' : 'py-12'}`}>
-              <p className="text-4xl mb-3">🔍</p>
-              <p className="text-gray-600 font-semibold text-sm">Search any business</p>
-              <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-                {locationLabel
-                  ? `Nearest locations appear first with the best card to use there.`
-                  : "Type a business name — we'll tell you which card earns the most."}
-              </p>
-            </div>
+
+            {/* No location prompt */}
+            {!userCoords && !nearbyLoading && nearbyPlaces.length === 0 && (
+              <div className={`text-center px-6 ${recentSearches.length > 0 ? 'py-6' : 'py-12'}`}>
+                <p className="text-4xl mb-3">📍</p>
+                <p className="text-gray-600 font-semibold text-sm">Enable location for nearby results</p>
+                <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                  Turn on location in Settings, or pin a location on the Home tab to see businesses around you.
+                </p>
+              </div>
+            )}
+
+            {/* API down with location */}
+            {userCoords && !nearbyLoading && nearbyPlaces.length === 0 && apiDown && (
+              <div className="text-center py-10 px-6">
+                <p className="text-3xl mb-2">📡</p>
+                <p className="text-gray-500 text-sm font-semibold">Couldn&apos;t load nearby places</p>
+                <p className="text-gray-400 text-xs mt-1">Check your connection and refresh</p>
+                <button
+                  onClick={() => { nearbyFetched.current = false; setApiDown(false); if (userCoords) loadNearby(userCoords); }}
+                  className="mt-3 px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-full"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
           </div>
         )}
       </div>
