@@ -196,11 +196,12 @@ export function distanceLabel(meters: number): { label: string; mode: 'walk' | '
     const mins = Math.max(1, Math.ceil(meters / 80)); // ~80 m/min walking
     return { label: `${mins} min walk`, mode: 'walk' };
   }
-  if (meters < 5_000) {
-    const mins = Math.max(1, Math.ceil(meters / 500)); // ~30 km/h suburban
+  const miles = meters / 1609.34;
+  if (miles < 1) {
+    const mins = Math.max(1, Math.ceil(meters / 500)); // ~30 mph suburban
     return { label: `${mins} min drive`, mode: 'drive' };
   }
-  return { label: `${(meters / 1000).toFixed(1)} km drive`, mode: 'drive' };
+  return { label: `${miles.toFixed(1)} mi drive`, mode: 'drive' };
 }
 
 /**
