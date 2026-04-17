@@ -26,14 +26,12 @@ function timeAgo(isoString: string): string {
   return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// ── Category emoji map ────────────────────────────────────────────────────────
-
 const CAT_EMOJI: Record<string, string> = {
   dining: '🍽️', grocery: '🛒', gas: '⛽', travel: '✈️',
   transit: '🚗', pharmacy: '💊', streaming: '🎬', online: '📦', general: '🏪',
 };
 
-// ── Single nearby place row ───────────────────────────────────────────────────
+// ── Nearby place row ──────────────────────────────────────────────────────────
 
 function NearbyPlaceRow({
   place, onTap, enabledCards, bonuses, redemptionStyle,
@@ -59,147 +57,71 @@ function NearbyPlaceRow({
     } catch { return null; }
   })();
 
-  const dist = place.distance ?? 0;
-  const { label: distLbl, mode } = distanceLabel(dist);
+  const { label: distLbl, mode } = distanceLabel(place.distance ?? 0);
 
   return (
     <button
       onClick={() => onTap(place)}
-      className="w-full flex items-center gap-3 px-3.5 py-3 bg-white rounded-2xl border border-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-[0.98] transition-all text-left"
+      className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all text-left"
     >
-      <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center text-lg flex-shrink-0">
+      <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
         {CAT_EMOJI[place.category] ?? '🏪'}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-gray-900 truncate">{place.name}</p>
-        <p className="text-xs text-gray-500 capitalize">
+        <p className="font-bold text-gray-900 text-sm truncate">{place.name}</p>
+        {place.address && (
+          <p className="text-[11px] text-gray-400 truncate mt-0.5 flex items-center gap-1">
+            <MapPin size={9} className="flex-shrink-0 text-gray-300"/>
+            {place.address}
+          </p>
+        )}
+        <p className="text-xs text-gray-400 capitalize mt-0.5">
           {place.category}
-          <span className={`ml-1.5 ${mode === 'drive' ? 'text-sky-500' : 'text-emerald-500'}`}>
+          <span className={`ml-1.5 font-medium ${mode === 'drive' ? 'text-sky-500' : 'text-emerald-500'}`}>
             · {mode === 'drive' ? '🚗' : '🚶'} {distLbl}
           </span>
         </p>
       </div>
-      {rec && (
-        <div className="flex-shrink-0 text-right">
-          <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+      {rec ? (
+        <div className="flex-shrink-0 flex flex-col items-end gap-1">
+          <div className={`w-10 h-6 rounded-md bg-gradient-to-br ${rec.best.card.gradient} shadow-sm`}/>
+          <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold ${
             rec.isHighValue ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
           }`}>
-            {rec.isHighValue && <span className="mr-0.5">⚡</span>}
+            {rec.isHighValue && <Zap size={8}/>}
             {rec.best.effectiveCPD.toFixed(1)}¢/$
           </div>
-          <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[72px]">
+          <p className="text-[10px] text-gray-400 max-w-[72px] truncate text-right">
             {rec.best.card.shortName}
           </p>
         </div>
+      ) : (
+        <ChevronRight size={14} className="text-gray-300 flex-shrink-0"/>
       )}
-      <ChevronRight size={14} className="text-emerald-300 flex-shrink-0"/>
     </button>
   );
 }
 
-// ── Nearby section ────────────────────────────────────────────────────────────
+// ── Skeleton card ─────────────────────────────────────────────────────────────
 
-const MAX_NEARBY = 6;
-
-function NearbyAlert({
-  places, loading, error, apiError, searched,
-  onTap, enabledCards, bonuses, redemptionStyle,
-}: {
-  places: NearbyPlace[];
-  loading: boolean;
-  error: string | null;
-  apiError: boolean;
-  searched: boolean;
-  onTap: (place: NearbyPlace) => void;
-  enabledCards: CreditCard[];
-  bonuses: Bonus[];
-  redemptionStyle: RedemptionStyle;
-}) {
-  const [dismissed, setDismissed] = useState(false);
-
-  if (loading) {
-    return (
-      <div className="mx-4 mt-4 p-3 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-2">
-        <Loader2 size={14} className="text-emerald-400 animate-spin flex-shrink-0"/>
-        <p className="text-xs text-emerald-600 font-medium">Finding nearby businesses…</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="mx-4 mt-4 p-3 bg-amber-50 border border-amber-100 rounded-2xl">
-        <p className="text-xs text-amber-600">{error}</p>
-      </div>
-    );
-  }
-
-  if (apiError) {
-    return (
-      <div className="mx-4 mt-4 p-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center gap-2">
-        <MapPin size={13} className="text-gray-300 flex-shrink-0"/>
-        <p className="text-xs text-gray-400">Business data temporarily unavailable — try again in a moment.</p>
-      </div>
-    );
-  }
-
-  if (dismissed) return null;
-
-  // Search completed but nothing found nearby
-  if (searched && places.length === 0) {
-    return (
-      <div className="mx-4 mt-4 p-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center gap-2">
-        <MapPin size={13} className="text-gray-300 flex-shrink-0"/>
-        <p className="text-xs text-gray-400">No businesses found nearby.</p>
-      </div>
-    );
-  }
-
-  if (places.length === 0) return null;
-
-  const visible = places.slice(0, MAX_NEARBY);
-  const maxDist = Math.max(...visible.map(p => p.distance ?? 0));
-  const isDriving = maxDist >= WALK_THRESHOLD_M;
-  const rangeLabel = isDriving
-    ? `up to ${distanceLabel(maxDist).label}`
-    : 'walking distance';
-
+function SkeletonCard() {
   return (
-    <div className="mx-4 mt-4">
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-2 px-0.5">
-        <div className="flex items-center gap-1.5">
-          <MapPin size={13} className={isDriving ? 'text-sky-500' : 'text-emerald-500'}/>
-          <p className={`text-[11px] uppercase tracking-widest font-bold ${isDriving ? 'text-sky-600' : 'text-emerald-600'}`}>
-            {visible.length} nearby · {rangeLabel}
-          </p>
-        </div>
-        <button
-          onClick={() => setDismissed(true)}
-          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
-        >
-          <X size={13}/>
-        </button>
+    <div className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl border border-gray-100 animate-pulse">
+      <div className="w-12 h-12 bg-gray-100 rounded-xl flex-shrink-0"/>
+      <div className="flex-1 space-y-2">
+        <div className="h-3 bg-gray-100 rounded-full w-2/3"/>
+        <div className="h-2.5 bg-gray-100 rounded-full w-1/2"/>
+        <div className="h-2 bg-gray-100 rounded-full w-1/3"/>
       </div>
-
-      {/* Place rows */}
-      <div className="space-y-2">
-        {visible.map(place => (
-          <NearbyPlaceRow
-            key={place.id}
-            place={place}
-            onTap={onTap}
-            enabledCards={enabledCards}
-            bonuses={bonuses}
-            redemptionStyle={redemptionStyle}
-          />
-        ))}
+      <div className="flex-shrink-0 space-y-1.5 flex flex-col items-end">
+        <div className="w-10 h-6 bg-gray-100 rounded-md"/>
+        <div className="w-12 h-4 bg-gray-100 rounded-full"/>
       </div>
     </div>
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const { enabledCards, addToHistory, state, setManualLocation } = useApp();
@@ -207,30 +129,24 @@ export default function HomePage() {
   const [showNotifications,  setShowNotifications]  = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
 
-  // Derive effective coords: manual pin takes priority over GPS
   const manualCoords = state.manualLocation
     ? { lat: state.manualLocation.lat, lon: state.manualLocation.lon }
     : undefined;
 
-  // Location-based nearby detection
+  const nearbyActive = state.locationSettings.enabled || !!state.manualLocation;
+
   const {
     places, loading: nearbyLoading, error: nearbyError,
     apiError: nearbyApiError, searched: nearbySearched, gpsCoords,
-  } = useNearbyPlaces(
-    state.locationSettings.enabled || !!state.manualLocation,
-    manualCoords,
-  );
+  } = useNearbyPlaces(nearbyActive, manualCoords);
 
-  const nearbyActive = state.locationSettings.enabled || !!state.manualLocation;
-
-  // Reverse-geocode GPS coords into a short label for the header pill
+  // Reverse-geocode GPS to short label
   const [gpsLabel, setGpsLabel] = useState<string | null>(null);
   useEffect(() => {
     if (!gpsCoords || state.manualLocation) return;
     reverseGeocode(gpsCoords.lat, gpsCoords.lon).then(label => {
       if (label) setGpsLabel(label);
     });
-  // Only re-run when the GPS fix changes meaningfully (rounded to ~1km)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     gpsCoords ? Math.round(gpsCoords.lat * 10) / 10 : null,
@@ -238,7 +154,7 @@ export default function HomePage() {
     !!state.manualLocation,
   ]);
 
-  // Precompute dashboard scenario previews
+  // Precompute static scenario previews (fallback when no location)
   const scenarioPreviews = useMemo(() => {
     if (enabledCards.length === 0) return {} as Record<string, { cpd: number; isHV: boolean }>;
     const out: Record<string, { cpd: number; isHV: boolean }> = {};
@@ -253,12 +169,11 @@ export default function HomePage() {
     return out;
   }, [enabledCards, state.bonuses, state.redemptionStyle]);
 
-  // Fire a browser notification when a new high-value nearby place is detected
+  // Browser notification on new high-value nearby place
   const topPlace = places[0];
   useEffect(() => {
     if (!topPlace || enabledCards.length === 0) return;
     if (!state.locationSettings.browserNotifications) return;
-
     const syntheticMerchant: Merchant = {
       id: topPlace.id, name: topPlace.name, displayName: topPlace.name,
       category: topPlace.category, emoji: '📍', scenarioLabel: topPlace.category,
@@ -301,7 +216,11 @@ export default function HomePage() {
     } catch { /* no-op */ }
   }
 
-  const latestRec = state.history[0];
+  const latestRec    = state.history[0];
+  const locationLabel = state.manualLocation?.label ?? gpsLabel ?? (nearbyActive ? 'Near you' : null);
+  const showNearby   = nearbyActive;
+  const maxDist      = places.length > 0 ? Math.max(...places.map(p => p.distance ?? 0)) : 0;
+  const isDriving    = maxDist >= WALK_THRESHOLD_M;
 
   return (
     <div className="pb-24">
@@ -313,39 +232,33 @@ export default function HomePage() {
             <p className="text-indigo-200 text-sm mt-1">Right card. Right moment.</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Location pill — tappable to open picker */}
-            {nearbyActive && (
-              <button
-                onClick={() => setShowLocationPicker(true)}
-                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full px-2 py-1 transition-colors"
-              >
-                {state.manualLocation ? (
-                  <>
-                    <Navigation size={10} className="text-sky-300"/>
-                    <span className="text-sky-300 text-[10px] font-semibold max-w-[80px] truncate">
-                      {state.manualLocation.label}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <MapPin size={10} className="text-emerald-300"/>
-                    <span className="text-emerald-300 text-[10px] font-semibold max-w-[80px] truncate">
-                      {gpsLabel ?? 'Live'}
-                    </span>
-                  </>
-                )}
-              </button>
-            )}
-            {!nearbyActive && (
-              <button
-                onClick={() => setShowLocationPicker(true)}
-                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 rounded-full px-2 py-1 transition-colors"
-                title="Set manual location"
-              >
-                <MapPin size={10} className="text-indigo-300"/>
-                <span className="text-indigo-300 text-[10px] font-semibold">Pin</span>
-              </button>
-            )}
+            {/* Location pill */}
+            <button
+              onClick={() => setShowLocationPicker(true)}
+              className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 active:bg-white/30 rounded-full px-3 py-1.5 transition-colors"
+            >
+              {state.manualLocation ? (
+                <>
+                  <Navigation size={10} className="text-sky-300"/>
+                  <span className="text-sky-300 text-[11px] font-semibold max-w-[90px] truncate">
+                    {state.manualLocation.label}
+                  </span>
+                </>
+              ) : nearbyActive ? (
+                <>
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
+                  <span className="text-emerald-300 text-[11px] font-semibold max-w-[90px] truncate">
+                    {gpsLabel ?? 'Live'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <MapPin size={10} className="text-indigo-300"/>
+                  <span className="text-indigo-300 text-[11px] font-semibold">Set location</span>
+                </>
+              )}
+            </button>
+
             <button
               onClick={() => setShowNotifications(prev => !prev)}
               className="relative p-1 rounded-full hover:bg-white/10 transition-colors"
@@ -388,7 +301,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ── Notifications Drawer ─────────────────────────────────────────── */}
+      {/* ── Notifications Drawer ──────────────────────────────────────────── */}
       {showNotifications && (
         <div className="animate-fade-in">
           <div className="mx-4 mt-3 bg-white rounded-2xl border border-gray-100 shadow-lg overflow-hidden">
@@ -410,7 +323,7 @@ export default function HomePage() {
             {state.history.length === 0 ? (
               <div className="py-8 text-center">
                 <p className="text-gray-400 text-sm">No tips yet</p>
-                <p className="text-gray-300 text-xs mt-1">Tap a scenario below to get started</p>
+                <p className="text-gray-300 text-xs mt-1">Tap a business below to get started</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
@@ -447,22 +360,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Nearby Alert (location-based or manual pin) ──────────────────── */}
-      {nearbyActive && (
-        <NearbyAlert
-          places={places}
-          loading={nearbyLoading}
-          error={nearbyError}
-          apiError={nearbyApiError}
-          searched={nearbySearched}
-          onTap={handleNearbyTap}
-          enabledCards={enabledCards}
-          bonuses={state.bonuses}
-          redemptionStyle={state.redemptionStyle}
-        />
-      )}
-
-      {/* ── Rotating Category Countdown ──────────────────────────────────── */}
+      {/* ── Rotating Category Countdown ───────────────────────────────────── */}
       <RotatingCategoryBanner/>
 
       {/* ── Latest Tip Banner ─────────────────────────────────────────────── */}
@@ -478,12 +376,8 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Scenarios ─────────────────────────────────────────────────────── */}
+      {/* ── Main Section ──────────────────────────────────────────────────── */}
       <div className="px-4 mt-6">
-        <div className="mb-5">
-          <h2 className="text-xl font-black text-gray-900">Where are you?</h2>
-          <p className="text-gray-500 text-sm mt-0.5">Tap to get your best card instantly</p>
-        </div>
 
         {enabledCards.length === 0 ? (
           <div className="text-center py-12 px-4">
@@ -493,62 +387,178 @@ export default function HomePage() {
               Enable cards in your Wallet →
             </Link>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {DASHBOARD_MERCHANTS.map(merchant => {
-              const preview = scenarioPreviews[merchant.id];
-              return (
-                <button key={merchant.id} onClick={() => handleScenario(merchant.id)}
-                  className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all">
-                  <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
-                    {merchant.emoji}
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <p className="font-bold text-gray-900">{merchant.displayName}</p>
-                    <p className="text-sm text-gray-500">{merchant.scenarioLabel}</p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {preview && (
-                      <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                        preview.isHV ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {preview.isHV && <Zap size={10}/>}
-                        {preview.cpd.toFixed(1)}¢/$
-                      </div>
-                    )}
-                    <ChevronRight size={16} className="text-gray-300"/>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Location CTA if not enabled */}
-        {!nearbyActive && (
-          <div className="flex gap-2 mt-4">
-            <Link href="/settings"
-              className="flex-1 flex items-center gap-3 p-4 bg-gray-50 border border-dashed border-gray-200 rounded-2xl hover:border-indigo-300 hover:bg-indigo-50/40 transition-all">
-              <MapPin size={18} className="text-gray-400"/>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-gray-600">Enable GPS detection</p>
-                <p className="text-xs text-gray-400">Auto nearby tips</p>
+        ) : showNearby ? (
+          /* ── NEARBY MODE ─────────────────────────────────────────────── */
+          <div>
+            {/* Section header */}
+            <div className="flex items-center justify-between mb-4 px-0.5">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  {isDriving
+                    ? <MapPin size={13} className="text-sky-500"/>
+                    : <MapPin size={13} className="text-emerald-500"/>
+                  }
+                  <h2 className="text-xl font-black text-gray-900">
+                    {locationLabel ? `Near ${locationLabel}` : 'Nearby'}
+                  </h2>
+                </div>
+                <p className="text-gray-400 text-xs mt-0.5 pl-0.5">
+                  {nearbyLoading
+                    ? 'Finding businesses…'
+                    : places.length > 0
+                      ? `${places.length} places · tap for best card`
+                      : nearbySearched
+                        ? 'No businesses found nearby'
+                        : 'Locating…'
+                  }
+                </p>
               </div>
-            </Link>
-            <button
-              onClick={() => setShowLocationPicker(true)}
-              className="flex items-center gap-2 px-4 py-4 bg-gray-50 border border-dashed border-gray-200 rounded-2xl hover:border-sky-300 hover:bg-sky-50/40 transition-all"
-            >
-              <Navigation size={16} className="text-gray-400"/>
-              <span className="text-sm font-semibold text-gray-600 whitespace-nowrap">Pin location</span>
-            </button>
+              {places.length > 0 && (
+                <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${
+                  isDriving ? 'bg-sky-50 text-sky-500' : 'bg-emerald-50 text-emerald-600'
+                }`}>
+                  {isDriving ? `up to ${distanceLabel(maxDist).label}` : 'walking distance'}
+                </span>
+              )}
+            </div>
+
+            {/* Loading skeletons */}
+            {nearbyLoading && places.length === 0 && (
+              <div className="space-y-3">
+                <SkeletonCard/>
+                <SkeletonCard/>
+                <SkeletonCard/>
+                <SkeletonCard/>
+              </div>
+            )}
+
+            {/* API error */}
+            {nearbyApiError && (
+              <div className="text-center py-8 bg-gray-50 rounded-2xl border border-gray-100">
+                <p className="text-2xl mb-2">📡</p>
+                <p className="text-gray-500 text-sm font-medium">Business data unavailable</p>
+                <p className="text-gray-400 text-xs mt-1">Check your connection and try again</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {nearbyError && (
+              <div className="py-4 px-4 bg-amber-50 rounded-2xl border border-amber-100">
+                <p className="text-xs text-amber-600">{nearbyError}</p>
+              </div>
+            )}
+
+            {/* Nearby results */}
+            {places.length > 0 && (
+              <div className="space-y-3">
+                {places.map(place => (
+                  <NearbyPlaceRow
+                    key={place.id}
+                    place={place}
+                    onTap={handleNearbyTap}
+                    enabledCards={enabledCards}
+                    bonuses={state.bonuses}
+                    redemptionStyle={state.redemptionStyle}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Fallback: show static scenarios if nothing loaded yet */}
+            {!nearbyLoading && places.length === 0 && nearbySearched && !nearbyApiError && (
+              <div>
+                <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400 px-0.5 mb-3">
+                  Quick scenarios
+                </p>
+                <div className="space-y-3">
+                  {DASHBOARD_MERCHANTS.map(merchant => {
+                    const preview = scenarioPreviews[merchant.id];
+                    return (
+                      <button key={merchant.id} onClick={() => handleScenario(merchant.id)}
+                        className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all">
+                        <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                          {merchant.emoji}
+                        </div>
+                        <div className="flex-1 text-left min-w-0">
+                          <p className="font-bold text-gray-900">{merchant.displayName}</p>
+                          <p className="text-sm text-gray-500">{merchant.scenarioLabel}</p>
+                        </div>
+                        {preview && (
+                          <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                            preview.isHV ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {preview.isHV && <Zap size={10}/>}
+                            {preview.cpd.toFixed(1)}¢/$
+                          </div>
+                        )}
+                        <ChevronRight size={16} className="text-gray-300 flex-shrink-0"/>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── STATIC SCENARIO MODE (no location) ──────────────────────── */
+          <div>
+            <div className="mb-5">
+              <h2 className="text-xl font-black text-gray-900">Where are you?</h2>
+              <p className="text-gray-500 text-sm mt-0.5">Tap to get your best card instantly</p>
+            </div>
+            <div className="space-y-3">
+              {DASHBOARD_MERCHANTS.map(merchant => {
+                const preview = scenarioPreviews[merchant.id];
+                return (
+                  <button key={merchant.id} onClick={() => handleScenario(merchant.id)}
+                    className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 active:scale-[0.98] transition-all">
+                    <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                      {merchant.emoji}
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <p className="font-bold text-gray-900">{merchant.displayName}</p>
+                      <p className="text-sm text-gray-500">{merchant.scenarioLabel}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {preview && (
+                        <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                          preview.isHV ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {preview.isHV && <Zap size={10}/>}
+                          {preview.cpd.toFixed(1)}¢/$
+                        </div>
+                      )}
+                      <ChevronRight size={16} className="text-gray-300"/>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Location CTA */}
+            <div className="flex gap-2 mt-4">
+              <Link href="/settings"
+                className="flex-1 flex items-center gap-3 p-4 bg-gray-50 border border-dashed border-gray-200 rounded-2xl hover:border-indigo-300 hover:bg-indigo-50/40 transition-all">
+                <MapPin size={18} className="text-gray-400"/>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-600">Enable GPS detection</p>
+                  <p className="text-xs text-gray-400">See what&apos;s around you</p>
+                </div>
+              </Link>
+              <button
+                onClick={() => setShowLocationPicker(true)}
+                className="flex items-center gap-2 px-4 py-4 bg-gray-50 border border-dashed border-gray-200 rounded-2xl hover:border-sky-300 hover:bg-sky-50/40 transition-all"
+              >
+                <Navigation size={16} className="text-gray-400"/>
+                <span className="text-sm font-semibold text-gray-600 whitespace-nowrap">Pin location</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       <RecommendationModal recommendation={activeRec} onClose={() => setActiveRec(null)}/>
 
-      {/* ── Location Picker sheet ─────────────────────────────────────────── */}
       {showLocationPicker && (
         <LocationPicker
           current={state.manualLocation}
