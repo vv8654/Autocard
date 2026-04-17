@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Zap, ChevronDown, ChevronUp, Gift } from 'lucide-react';
 import { Recommendation, RankedCard } from '../types';
+import { rewardLabel, earnedDollars } from '../lib/displayReward';
 
 interface Props {
   recommendation: Recommendation | null;
@@ -60,7 +61,7 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
             {isHighValue && !bonusContext && (
               <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/20 backdrop-blur-sm rounded-full px-2.5 py-1">
                 <Zap size={11} className="text-white" />
-                <span className="text-white text-[11px] font-bold tracking-wide">High Value</span>
+                <span className="text-white text-[11px] font-bold tracking-wide">Top Pick</span>
               </div>
             )}
             {bonusContext && (
@@ -71,24 +72,27 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
             )}
 
             <p className="text-white/60 text-[10px] uppercase tracking-widest font-semibold mb-1">
-              Recommended
+              Use this card
             </p>
-            <h3 className="text-white text-2xl font-black leading-tight mb-4">
+            <h3 className="text-white text-2xl font-black leading-tight mb-1">
               {best.card.shortName}
             </h3>
+            <p className="text-white/70 text-sm font-semibold mb-4">
+              {rewardLabel(best.card.rewardsType, best.multiplier)}
+            </p>
 
             <div className="flex items-end gap-6">
               <div>
-                <p className="text-white/70 text-xs font-medium">{best.multiplier}x {best.card.pointsName}</p>
+                <p className="text-white/60 text-xs font-medium">on a ${context.estimatedAmount} purchase</p>
                 <p className="text-white text-4xl font-black leading-none">
-                  {best.effectiveCPD.toFixed(1)}<span className="text-2xl">¢</span>
+                  ≈{earnedDollars(best.effectiveCPD, context.estimatedAmount)}
                 </p>
-                <p className="text-white/60 text-xs mt-0.5">per dollar spent</p>
+                <p className="text-white/70 text-sm font-semibold mt-0.5">earned back</p>
               </div>
-              <div className="pb-0.5">
-                <p className="text-white/70 text-xs font-medium">On ${context.estimatedAmount}</p>
-                <p className="text-white text-xl font-bold">≈${estimatedEarned}</p>
-                <p className="text-white/60 text-xs">earned back</p>
+              <div className="pb-0.5 border-l border-white/20 pl-6">
+                <p className="text-white/60 text-xs">reward rate</p>
+                <p className="text-white text-xl font-bold">{best.effectiveCPD.toFixed(1)}¢</p>
+                <p className="text-white/60 text-xs">per dollar</p>
               </div>
             </div>
           </div>
@@ -191,17 +195,17 @@ function AlternativeRow({ ranked }: { ranked: RankedCard }) {
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500">{multiplier}x {card.pointsName}</p>
+        <p className="text-xs text-gray-500">{rewardLabel(card.rewardsType, multiplier)}</p>
       </div>
 
       <div className="text-right flex-shrink-0">
         <p className={`text-sm font-bold ${displayCPD >= 5 ? 'text-green-600' : 'text-gray-700'}`}>
-          {displayCPD.toFixed(1)}¢
+          {earnedDollars(displayCPD, 50)} back
         </p>
         {bonusApplied && baseCPD !== undefined && (
-          <p className="text-[10px] text-violet-400">{baseCPD.toFixed(1)}¢ base</p>
+          <p className="text-[10px] text-violet-400">{earnedDollars(baseCPD, 50)} base</p>
         )}
-        {!bonusApplied && <p className="text-[10px] text-gray-400">per $1</p>}
+        {!bonusApplied && <p className="text-[10px] text-gray-400">on $50</p>}
       </div>
     </div>
   );

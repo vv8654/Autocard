@@ -155,6 +155,11 @@ function buildExplanation(
 ): string {
   const { card, multiplier, effectiveCPD } = best;
   const categoryLabel = categoryDisplayName(context.merchant.category);
+  const amount = context.estimatedAmount;
+  const earned = ((effectiveCPD / 100) * amount).toFixed(2);
+  const rewardStr = card.rewardsType === 'Cash'
+    ? `${multiplier}% cash back`
+    : `${multiplier}x ${card.rewardsType === 'MR' ? 'Membership Rewards' : card.rewardsType === 'UR' ? 'Ultimate Rewards' : 'miles'}`;
   const secondBest = allRanked[1];
 
   if (bonusContext) {
@@ -162,29 +167,29 @@ function buildExplanation(
     const remaining = remainingSpend.toLocaleString('en-US', {
       style: 'currency', currency: 'USD', maximumFractionDigits: 0,
     });
-    let text = `Use ${card.shortName} — you're ${remaining} away from a $${totalValue} bonus, boosting your effective return to ${effectiveCPD.toFixed(1)}¢ per dollar.`;
+    const baseEarned = ((baseCPD / 100) * amount).toFixed(2);
+    let text = `${card.shortName} earns $${earned} on this purchase and you're only ${remaining} from a $${totalValue} welcome bonus.`;
     if (baselineBest) {
-      text += ` Without this bonus, ${baselineBest.shortName} would be best (${baselineBest.effectiveCPD.toFixed(1)}¢/$).`;
+      const baselineEarned = ((baselineBest.effectiveCPD / 100) * amount).toFixed(2);
+      text += ` Without the bonus, ${baselineBest.shortName} would earn slightly more ($${baselineEarned}).`;
     } else {
-      text += ` It also earns ${baseCPD.toFixed(1)}¢/$ on ${categoryLabel} purchases outright.`;
+      text += ` Base earn alone: $${baseEarned} back.`;
     }
     return text;
   }
 
-  let text = `Use ${card.shortName} — ${categoryLabel} earns ${multiplier}x ${card.pointsName} (≈${effectiveCPD.toFixed(1)}¢ per dollar).`;
+  let text = `${card.shortName} gives you ${rewardStr} at ${categoryLabel} — about $${earned} back on this $${amount} purchase.`;
 
   if (secondBest) {
+    const secondEarned = (((secondBest.baseCPD ?? secondBest.effectiveCPD) / 100) * amount).toFixed(2);
     const margin = effectiveCPD - (secondBest.baseCPD ?? secondBest.effectiveCPD);
-    const secondCPD = secondBest.baseCPD ?? secondBest.effectiveCPD;
-    if (margin >= 2) {
-      text += ` That's ${margin.toFixed(1)}¢ more than your next-best option (${secondBest.card.shortName}).`;
-    } else if (margin > 0) {
-      text += ` Slightly ahead of ${secondBest.card.shortName} at ${secondCPD.toFixed(1)}¢/$1.`;
+    if (margin >= 1) {
+      text += ` ${secondBest.card.shortName} would earn $${secondEarned} — ${card.shortName} comes out ahead.`;
     }
   }
 
   if (best.note) {
-    text += ` Note: ${best.note}.`;
+    text += ` (${best.note}.)`;
   }
 
   return text;

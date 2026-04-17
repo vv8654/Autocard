@@ -12,6 +12,7 @@ import { BottomNav } from '../components/BottomNav';
 import { RotatingCategoryBanner } from '../components/RotatingCategoryBanner';
 import { LocationPicker } from '../components/LocationPicker';
 import { Bonus, CreditCard, Merchant, NearbyPlace, Recommendation, RedemptionStyle } from '../types';
+import { rewardLabel, earnedDollars } from '../lib/displayReward';
 import Link from 'next/link';
 
 const DASHBOARD_MERCHANTS = DASHBOARD_SCENARIO_IDS
@@ -85,14 +86,14 @@ function NearbyPlaceRow({
       {rec ? (
         <div className="flex-shrink-0 flex flex-col items-end gap-1">
           <div className={`w-10 h-6 rounded-md bg-gradient-to-br ${rec.best.card.gradient} shadow-sm`}/>
-          <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold ${
+          <div className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${
             rec.isHighValue ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
           }`}>
             {rec.isHighValue && <Zap size={8}/>}
-            {rec.best.effectiveCPD.toFixed(1)}¢/$
+            {rewardLabel(rec.best.card.rewardsType, rec.best.multiplier)}
           </div>
-          <p className="text-[10px] text-gray-400 max-w-[72px] truncate text-right">
-            {rec.best.card.shortName}
+          <p className="text-[10px] text-emerald-600 font-semibold">
+            {earnedDollars(rec.best.effectiveCPD, 50)} back
           </p>
         </div>
       ) : (
@@ -340,7 +341,7 @@ export default function HomePage() {
                         {rec.isHighValue && <Zap size={10} className="text-amber-500 flex-shrink-0"/>}
                       </div>
                       <p className="text-xs text-gray-500 truncate">
-                        {rec.best.card.shortName} · {rec.best.effectiveCPD.toFixed(1)}¢/$
+                        {rec.best.card.shortName} · {rewardLabel(rec.best.card.rewardsType, rec.best.multiplier)}
                       </p>
                     </div>
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{timeAgo(rec.timestamp)}</span>
@@ -488,7 +489,7 @@ export default function HomePage() {
                             preview.isHV ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                           }`}>
                             {preview.isHV && <Zap size={10}/>}
-                            {preview.cpd.toFixed(1)}¢/$
+                            {earnedDollars(preview.cpd, 50)} back
                           </div>
                         )}
                         <ChevronRight size={16} className="text-gray-300 flex-shrink-0"/>
@@ -525,7 +526,7 @@ export default function HomePage() {
                           preview.isHV ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                         }`}>
                           {preview.isHV && <Zap size={10}/>}
-                          {preview.cpd.toFixed(1)}¢/$
+                          {earnedDollars(preview.cpd, 50)} back
                         </div>
                       )}
                       <ChevronRight size={16} className="text-gray-300"/>
