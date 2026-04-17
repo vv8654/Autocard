@@ -12,13 +12,11 @@ interface Props {
 
 export function RecommendationModal({ recommendation, onClose }: Props) {
   const [showAlternatives, setShowAlternatives] = useState(false);
-  const [customAmount, setCustomAmount] = useState<number | null>(null);
-  const [inputVal, setInputVal]         = useState('');
+  const [inputVal, setInputVal] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (recommendation) {
-      setCustomAmount(null);
       setInputVal('');
       setShowAlternatives(false);
     }
@@ -27,13 +25,8 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
   if (!recommendation) return null;
 
   const { best, alternatives, explanation, context, isHighValue, bonusContext } = recommendation;
-  const displayAmount = customAmount ?? context.estimatedAmount;
-
-  function handleAmountChange(raw: string) {
-    setInputVal(raw);
-    const parsed = parseFloat(raw.replace(/[^0-9.]/g, ''));
-    setCustomAmount(!isNaN(parsed) && parsed > 0 ? parsed : null);
-  }
+  const parsed = parseFloat(inputVal);
+  const displayAmount = (!isNaN(parsed) && parsed > 0) ? parsed : context.estimatedAmount;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -72,13 +65,13 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
                   type="number"
                   inputMode="decimal"
                   value={inputVal}
-                  onChange={e => handleAmountChange(e.target.value)}
+                  onChange={e => setInputVal(e.target.value)}
                   placeholder={String(context.estimatedAmount)}
                   className="flex-1 bg-transparent text-gray-900 text-lg font-bold outline-none placeholder-gray-300 min-w-0"
                 />
               </div>
             </div>
-            {!customAmount && (
+            {!inputVal && (
               <div className="text-right flex-shrink-0">
                 <p className="text-[10px] text-gray-400">estimated</p>
                 <p className="text-xs font-semibold text-gray-500">${context.estimatedAmount}</p>
