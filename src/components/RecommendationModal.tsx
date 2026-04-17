@@ -160,7 +160,7 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
             {showAlternatives && (
               <div className="space-y-2 mt-1">
                 {alternatives.map(ranked => (
-                  <AlternativeRow key={ranked.card.id} ranked={ranked} />
+                  <AlternativeRow key={ranked.card.id} ranked={ranked} amount={context.estimatedAmount} />
                 ))}
               </div>
             )}
@@ -173,7 +173,7 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
   );
 }
 
-function AlternativeRow({ ranked }: { ranked: RankedCard }) {
+function AlternativeRow({ ranked, amount }: { ranked: RankedCard; amount: number }) {
   const { card, multiplier, effectiveCPD, baseCPD, bonusApplied, rank } = ranked;
   const displayCPD = effectiveCPD;
   const isZero = displayCPD <= 1.0;
@@ -200,12 +200,12 @@ function AlternativeRow({ ranked }: { ranked: RankedCard }) {
 
       <div className="text-right flex-shrink-0">
         <p className={`text-sm font-bold ${displayCPD >= 5 ? 'text-green-600' : 'text-gray-700'}`}>
-          {earnedDollars(displayCPD, 50)} back
+          {earnedDollars(displayCPD, amount)} back
         </p>
         {bonusApplied && baseCPD !== undefined && (
-          <p className="text-[10px] text-violet-400">{earnedDollars(baseCPD, 50)} base</p>
+          <p className="text-[10px] text-violet-400">{earnedDollars(baseCPD, amount)} base</p>
         )}
-        {!bonusApplied && <p className="text-[10px] text-gray-400">on $50</p>}
+        {!bonusApplied && <p className="text-[10px] text-gray-400">on ${amount}</p>}
       </div>
     </div>
   );

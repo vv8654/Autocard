@@ -13,6 +13,7 @@ import { RotatingCategoryBanner } from '../components/RotatingCategoryBanner';
 import { LocationPicker } from '../components/LocationPicker';
 import { Bonus, CreditCard, Merchant, NearbyPlace, Recommendation, RedemptionStyle } from '../types';
 import { rewardLabel, earnedDollars } from '../lib/displayReward';
+import { estimateAmount } from '../lib/estimateAmount';
 import Link from 'next/link';
 
 const DASHBOARD_MERCHANTS = DASHBOARD_SCENARIO_IDS
@@ -52,7 +53,7 @@ function NearbyPlaceRow({
     };
     try {
       return getRecommendation(
-        { merchantId: place.id, merchant, estimatedAmount: 50 },
+        { merchantId: place.id, merchant, estimatedAmount: estimateAmount(place.category, place.name) },
         enabledCards, bonuses, redemptionStyle,
       );
     } catch { return null; }
@@ -93,7 +94,7 @@ function NearbyPlaceRow({
             {rewardLabel(rec.best.card.rewardsType, rec.best.multiplier)}
           </div>
           <p className="text-[10px] text-emerald-600 font-semibold">
-            {earnedDollars(rec.best.effectiveCPD, 50)} back
+            {earnedDollars(rec.best.effectiveCPD, rec.context.estimatedAmount)} back
           </p>
         </div>
       ) : (

@@ -9,6 +9,7 @@ import { RecommendationModal } from '../../components/RecommendationModal';
 import { BottomNav } from '../../components/BottomNav';
 import { Category, Merchant, Recommendation } from '../../types';
 import { rewardLabel, earnedDollars } from '../../lib/displayReward';
+import { estimateAmount } from '../../lib/estimateAmount';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ function ResultCard({
     scenarioLabel: CATEGORY_LABEL[result.category],
   };
   const rec  = getRecommendation(
-    { merchantId: result.id, merchant, estimatedAmount: 50 },
+    { merchantId: result.id, merchant, estimatedAmount: estimateAmount(result.category, result.name) },
     enabledCards, bonuses, redemptionStyle,
   );
   const dist = result.distance != null ? distanceLabel(result.distance) : null;
@@ -131,7 +132,7 @@ function ResultCard({
           {rewardLabel(rec.best.card.rewardsType, rec.best.multiplier)}
         </div>
         <p className="text-[10px] text-emerald-600 font-semibold">
-          {earnedDollars(rec.best.effectiveCPD, 50)} back
+          {earnedDollars(rec.best.effectiveCPD, rec.context.estimatedAmount)} back
         </p>
       </div>
     </button>
@@ -279,7 +280,7 @@ export default function SearchPage() {
     };
     try {
       const rec = getRecommendation(
-        { merchantId: item.id, merchant, estimatedAmount: 50 },
+        { merchantId: item.id, merchant, estimatedAmount: estimateAmount(item.category, item.name) },
         enabledCards, state.bonuses, state.redemptionStyle,
       );
       addToHistory(rec);
