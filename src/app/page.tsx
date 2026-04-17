@@ -158,14 +158,15 @@ export default function HomePage() {
 
   // Precompute static scenario previews (fallback when no location)
   const scenarioPreviews = useMemo(() => {
-    if (enabledCards.length === 0) return {} as Record<string, { cpd: number; isHV: boolean }>;
-    const out: Record<string, { cpd: number; isHV: boolean }> = {};
+    if (enabledCards.length === 0) return {} as Record<string, { cpd: number; isHV: boolean; amount: number }>;
+    const out: Record<string, { cpd: number; isHV: boolean; amount: number }> = {};
     for (const merchant of DASHBOARD_MERCHANTS) {
-      const ctx = buildContext(merchant.id);
+      const amt = estimateAmount(merchant.category, merchant.name);
+      const ctx = buildContext(merchant.id, amt);
       if (!ctx) continue;
       try {
         const rec = getRecommendation(ctx, enabledCards, state.bonuses, state.redemptionStyle);
-        out[merchant.id] = { cpd: rec.best.effectiveCPD, isHV: rec.isHighValue };
+        out[merchant.id] = { cpd: rec.best.effectiveCPD, isHV: rec.isHighValue, amount: amt };
       } catch { /* skip */ }
     }
     return out;
@@ -195,7 +196,9 @@ export default function HomePage() {
 
   function handleScenario(merchantId: string) {
     if (enabledCards.length === 0) return;
-    const ctx = buildContext(merchantId);
+    const merchant = DASHBOARD_MERCHANTS.find(m => m.id === merchantId);
+    const amt = merchant ? estimateAmount(merchant.category, merchant.name) : 50;
+    const ctx = buildContext(merchantId, amt);
     if (!ctx) return;
     try {
       const rec = getRecommendation(ctx, enabledCards, state.bonuses, state.redemptionStyle);
@@ -490,7 +493,7 @@ export default function HomePage() {
                             preview.isHV ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                           }`}>
                             {preview.isHV && <Zap size={10}/>}
-                            {earnedDollars(preview.cpd, 50)} back
+                            {earnedDollars(preview.cpd, preview.amount)} back
                           </div>
                         )}
                         <ChevronRight size={16} className="text-gray-300 flex-shrink-0"/>
@@ -527,7 +530,7 @@ export default function HomePage() {
                           preview.isHV ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                         }`}>
                           {preview.isHV && <Zap size={10}/>}
-                          {earnedDollars(preview.cpd, 50)} back
+                          {earnedDollars(preview.cpd, preview.amount)} back
                         </div>
                       )}
                       <ChevronRight size={16} className="text-gray-300"/>
