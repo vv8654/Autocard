@@ -3,10 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, X, Zap, Loader2, MapPin, Clock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { ALL_MERCHANTS } from '../../data/allMerchants';
-import { detectCategoryFromName } from '../../lib/categoryDetect';
 import { getRecommendation } from '../../lib/recommendation';
-import { searchNearbyByName, distanceLabel } from '../../lib/location';
+import { distanceLabel } from '../../lib/location';
 import { RecommendationModal } from '../../components/RecommendationModal';
 import { BottomNav } from '../../components/BottomNav';
 import { Category, Merchant, Recommendation } from '../../types';
@@ -18,9 +16,8 @@ interface SearchResult {
   name: string;
   category: Category;
   emoji: string;
-  source: 'local' | 'osm';
-  distance?: number;
   address?: string;
+  distance?: number;
 }
 
 interface RecentSearch {
@@ -47,14 +44,12 @@ const CATEGORY_LABEL: Record<Category, string> = {
 };
 
 const QUICK_CATEGORIES: { category: Category; label: string; emoji: string }[] = [
-  { category: 'dining',    label: 'Dining',    emoji: '🍽️' },
-  { category: 'grocery',   label: 'Grocery',   emoji: '🛒' },
-  { category: 'gas',       label: 'Gas',       emoji: '⛽' },
-  { category: 'pharmacy',  label: 'Pharmacy',  emoji: '💊' },
-  { category: 'travel',    label: 'Travel',    emoji: '✈️' },
-  { category: 'transit',   label: 'Transit',   emoji: '🚗' },
-  { category: 'streaming', label: 'Streaming', emoji: '🎬' },
-  { category: 'online',    label: 'Online',    emoji: '📦' },
+  { category: 'dining',   label: 'Dining',   emoji: '🍽️' },
+  { category: 'grocery',  label: 'Grocery',  emoji: '🛒' },
+  { category: 'gas',      label: 'Gas',      emoji: '⛽' },
+  { category: 'pharmacy', label: 'Pharmacy', emoji: '💊' },
+  { category: 'travel',   label: 'Travel',   emoji: '✈️' },
+  { category: 'transit',  label: 'Transit',  emoji: '🚗' },
 ];
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -74,50 +69,6 @@ function saveRecent(r: SearchResult): void {
       ...prev,
     ]));
   } catch { /* ignore */ }
-}
-
-// ── Nominatim fallback (no location only) ─────────────────────────────────────
-
-interface NominatimHit {
-  place_id: number;
-  display_name: string;
-  extratags?: Record<string, string>;
-}
-
-const NOMINATIM_TAG_MAP: Record<string, Category> = {
-  restaurant: 'dining', cafe: 'dining', fast_food: 'dining', bar: 'dining',
-  pub: 'dining', food_court: 'dining', ice_cream: 'dining', bakery: 'dining',
-  pharmacy: 'pharmacy', fuel: 'gas', supermarket: 'grocery', convenience: 'grocery',
-  grocery: 'grocery', greengrocer: 'grocery', hotel: 'travel', hostel: 'travel',
-  motel: 'travel', bus_station: 'transit', car_rental: 'transit',
-};
-
-function parseNominatimHit(h: NominatimHit): SearchResult {
-  const parts   = h.display_name.split(',');
-  const name    = parts[0].trim();
-  const address = parts.slice(1, 3).map(s => s.trim()).filter(Boolean).join(', ') || undefined;
-  const amenity = h.extratags?.amenity ?? '';
-  const shop    = h.extratags?.shop    ?? '';
-  const cat: Category = NOMINATIM_TAG_MAP[amenity] ?? NOMINATIM_TAG_MAP[shop] ?? detectCategoryFromName(name);
-  return { id: String(h.place_id), name, category: cat, emoji: CATEGORY_EMOJI[cat], source: 'osm' as const, address };
-}
-
-// Nominatim search — optionally location-biased with viewbox
-async function searchNominatim(
-  query: string,
-  coords?: { lat: number; lon: number },
-): Promise<SearchResult[]> {
-  // viewbox biases results toward the user's area (bounded=0 still allows outside)
-  const viewbox = coords
-    ? `&viewbox=${coords.lon - 0.5},${coords.lat + 0.5},${coords.lon + 0.5},${coords.lat - 0.5}&bounded=0`
-    : '';
-  const url =
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}` +
-    `&format=json&limit=8&addressdetails=1&extratags=1&countrycodes=us${viewbox}`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'en', 'User-Agent': 'AutoCard/1.0' } });
-  if (!res.ok) return [];
-  const hits: NominatimHit[] = await res.json();
-  return hits.filter(h => h.display_name).map(parseNominatimHit);
 }
 
 // ── Result card ───────────────────────────────────────────────────────────────
@@ -160,7 +111,7 @@ function ResultCard({
             {result.address}
           </p>
         )}
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+        <div className="flex items-center gap-1.5 mt-1">
           <span className="text-[11px] text-gray-400">{CATEGORY_LABEL[result.category]}</span>
           {dist && (
             <span className={`text-[11px] font-semibold ${dist.mode === 'drive' ? 'text-sky-500' : 'text-emerald-500'}`}>
@@ -183,25 +134,6 @@ function ResultCard({
         </p>
       </div>
     </button>
-  );
-}
-
-// ── Skeleton card ─────────────────────────────────────────────────────────────
-
-function SkeletonCard() {
-  return (
-    <div className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl border border-gray-100 animate-pulse">
-      <div className="w-11 h-11 bg-gray-100 rounded-xl flex-shrink-0"/>
-      <div className="flex-1 space-y-2">
-        <div className="h-3 bg-gray-100 rounded-full w-2/3"/>
-        <div className="h-2.5 bg-gray-100 rounded-full w-1/2"/>
-        <div className="h-2 bg-gray-100 rounded-full w-1/3"/>
-      </div>
-      <div className="flex-shrink-0 space-y-1.5 items-end flex flex-col">
-        <div className="w-10 h-6 bg-gray-100 rounded-md"/>
-        <div className="w-12 h-4 bg-gray-100 rounded-full"/>
-      </div>
-    </div>
   );
 }
 
@@ -231,21 +163,20 @@ function RecentRow({ item, onTap }: { item: RecentSearch; onTap: (item: RecentSe
 
 export default function SearchPage() {
   const { enabledCards, addToHistory, state } = useApp();
-  const [query,           setQuery]           = useState('');
-  const [results,         setResults]         = useState<SearchResult[]>([]);
-  const [loading,         setLoading]         = useState(false);
-  const [activeRec,       setActiveRec]       = useState<Recommendation | null>(null);
-  const [activeCategory,  setActiveCategory]  = useState<Category | null>(null);
-  const [userCoords,      setUserCoords]      = useState<{ lat: number; lon: number } | null>(null);
-  const [recentSearches,  setRecentSearches]  = useState<RecentSearch[]>([]);
-  const [noNearby,        setNoNearby]        = useState(false);
-  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchIdRef  = useRef(0);
-  const inputRef     = useRef<HTMLInputElement>(null);
+  const [query,          setQuery]          = useState('');
+  const [results,        setResults]        = useState<SearchResult[]>([]);
+  const [loading,        setLoading]        = useState(false);
+  const [activeRec,      setActiveRec]      = useState<Recommendation | null>(null);
+  const [activeCategory, setActiveCategory] = useState<Category | null>(null);
+  const [userCoords,     setUserCoords]     = useState<{ lat: number; lon: number } | null>(null);
+  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchIdRef = useRef(0);
+  const inputRef    = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setRecentSearches(loadRecents()); }, []);
 
-  // Resolve location
+  // Resolve location: manual pin > live GPS
   useEffect(() => {
     if (state.manualLocation) {
       setUserCoords({ lat: state.manualLocation.lat, lon: state.manualLocation.lon });
@@ -260,89 +191,74 @@ export default function SearchPage() {
     }
   }, [state.manualLocation, state.locationSettings.enabled]);
 
-  // ── Search logic ──────────────────────────────────────────────────────────
+  // ── Category chip tap: search that category near user ─────────────────────
+  useEffect(() => {
+    if (!activeCategory) return;
+    const sid = ++searchIdRef.current;
+    setLoading(true);
+    setResults([]);
+
+    const params = new URLSearchParams({ q: CATEGORY_LABEL[activeCategory] });
+    if (userCoords) {
+      params.set('lat', String(userCoords.lat));
+      params.set('lon', String(userCoords.lon));
+    }
+
+    fetch(`/api/places/search?${params}`)
+      .then(r => r.json())
+      .then((data: { results?: Array<{ id: string; name: string; category: Category; address?: string; distance?: number }> }) => {
+        if (searchIdRef.current !== sid) return;
+        const mapped = (data.results ?? []).map(p => ({
+          ...p, emoji: CATEGORY_EMOJI[p.category] ?? '🏪',
+        }));
+        setResults(mapped);
+      })
+      .catch(() => { if (searchIdRef.current === sid) setResults([]); })
+      .finally(() => { if (searchIdRef.current === sid) setLoading(false); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory]);
+
+  // ── Typed query search ────────────────────────────────────────────────────
   useEffect(() => {
     const q = query.trim();
-
-    if (!q && !activeCategory) {
+    if (!q) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       searchIdRef.current++;
       setResults([]);
-      setNoNearby(false);
-            setLoading(false);
+      setLoading(false);
       return;
     }
 
-    // Phase 1: local DB — instant
-    const local: SearchResult[] = ALL_MERCHANTS
-      .filter(m => {
-        const matchesQ   = !q || m.name.toLowerCase().includes(q.toLowerCase());
-        const matchesCat = !activeCategory || m.category === activeCategory;
-        return matchesQ && matchesCat;
-      })
-      .slice(0, 5)
-      .map(m => ({ id: m.id, name: m.displayName, category: m.category, emoji: m.emoji, source: 'local' as const }));
-
-    // Category chips: local filter only
-    if (activeCategory && !q) {
-      setResults(local);
-      return;
-    }
-
-    // Typed query: show local instantly, then fire async
-    setResults(local);
-    setNoNearby(false);
-    
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const sid = ++searchIdRef.current;
     setLoading(true);
 
     debounceRef.current = setTimeout(async () => {
       try {
-        let apiResults: SearchResult[] = [];
-
+        const params = new URLSearchParams({ q });
         if (userCoords) {
-          try {
-            // Try Overpass first — fast, true proximity
-            const places = await searchNearbyByName(q, userCoords.lat, userCoords.lon);
-            apiResults = places.map(p => ({
-              id: p.id, name: p.name, category: p.category,
-              emoji: CATEGORY_EMOJI[p.category], source: 'osm' as const,
-              distance: p.distance, address: p.address,
-            }));
-          } catch {
-            // Overpass down → fall back to location-biased Nominatim
-            apiResults = await searchNominatim(q, userCoords);
-          }
-        } else {
-          // No location → Nominatim US-wide
-          apiResults = await searchNominatim(q);
+          params.set('lat', String(userCoords.lat));
+          params.set('lon', String(userCoords.lon));
         }
-
+        const res  = await fetch(`/api/places/search?${params}`);
+        const data = await res.json() as { results?: Array<{ id: string; name: string; category: Category; address?: string; distance?: number }> };
         if (searchIdRef.current !== sid) return;
-        const seen    = new Set(local.map(r => r.name.toLowerCase()));
-        const deduped = apiResults.filter(r => !seen.has(r.name.toLowerCase()));
-        // Nearby (with distance) first, then local DB matches
-        const withDist    = deduped.filter(r => r.distance != null);
-        const withoutDist = deduped.filter(r => r.distance == null);
-        setResults([...withDist, ...local, ...withoutDist]);
-        setNoNearby(withDist.length === 0 && local.length === 0 && withoutDist.length === 0);
+        const mapped = (data.results ?? []).map(p => ({
+          ...p, emoji: CATEGORY_EMOJI[p.category] ?? '🏪',
+        }));
+        setResults(mapped);
       } catch {
-        if (searchIdRef.current !== sid) return;
-        setResults(local);
-        setNoNearby(local.length === 0);
+        if (searchIdRef.current === sid) setResults([]);
       } finally {
         if (searchIdRef.current === sid) setLoading(false);
       }
-    }, 350);
+    }, 200); // 200ms debounce — fast like autocomplete
 
     return () => {
-      searchIdRef.current++;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      setLoading(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, activeCategory, userCoords]);
+  }, [query, userCoords]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -379,16 +295,16 @@ export default function SearchPage() {
     setQuery('');
     setActiveCategory(null);
     setResults([]);
-    setNoNearby(false);
-        setLoading(false);
+    setLoading(false);
+    searchIdRef.current++;
     inputRef.current?.focus();
   }
 
-  // ── Derived state ─────────────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
 
-  const locationLabel  = state.manualLocation?.label ?? (userCoords ? 'Near you' : null);
-  const isSearching    = !!query.trim() || !!activeCategory;
-  const hasResults     = results.length > 0;
+  const locationLabel = state.manualLocation?.label ?? (userCoords ? 'Near you' : null);
+  const isSearching   = !!query.trim() || !!activeCategory;
+  const hasResults    = results.length > 0;
 
   return (
     <div className="pb-24">
@@ -405,6 +321,8 @@ export default function SearchPage() {
             </div>
           )}
         </div>
+
+        {/* Search input */}
         <div className="relative">
           <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"/>
           <input
@@ -413,17 +331,20 @@ export default function SearchPage() {
             value={query}
             onChange={e => { setQuery(e.target.value); setActiveCategory(null); }}
             placeholder={locationLabel ? `Search near ${locationLabel}…` : 'Search any business…'}
-            className="w-full bg-white rounded-2xl pl-10 pr-10 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none shadow-sm"
+            className="w-full bg-white rounded-2xl pl-10 pr-10 py-3.5 text-sm text-gray-900 placeholder-gray-400 outline-none shadow-sm"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
-          {loading && !query && (
+          {loading ? (
             <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-indigo-400 animate-spin"/>
-          )}
-          {(query || activeCategory) && (
+          ) : (query || activeCategory) ? (
             <button onClick={clearSearch}
               className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-500">
               <X size={13}/>
             </button>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -432,9 +353,9 @@ export default function SearchPage() {
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide mb-5 -mx-4 px-4">
           {QUICK_CATEGORIES.map(({ category, label, emoji }) => (
             <button key={category} onClick={() => handleCategoryTap(category)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold border transition-all ${
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold border transition-all ${
                 activeCategory === category
-                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300'
               }`}>
               <span>{emoji}</span>{label}
@@ -449,37 +370,25 @@ export default function SearchPage() {
           </div>
         )}
 
-        {/* ── SEARCH RESULTS ──────────────────────────────────────────────── */}
+        {/* ── RESULTS ──────────────────────────────────────────────────────── */}
         {isSearching && enabledCards.length > 0 && (
           <div className="space-y-3">
-            {/* Status row */}
+            {/* Status label */}
             <div className="flex items-center justify-between px-1 min-h-[18px]">
               <p className="text-[11px] uppercase tracking-widest font-bold text-gray-400">
-                {activeCategory && !query
-                  ? `${CATEGORY_LABEL[activeCategory]} ${locationLabel ? `near ${locationLabel}` : ''}`
+                {loading && !hasResults
+                  ? 'Searching…'
                   : hasResults
                     ? `${results.length} result${results.length !== 1 ? 's' : ''}${locationLabel ? ` near ${locationLabel}` : ''}`
-                    : noNearby
-                      ? `None near ${locationLabel ?? 'you'}`
-                      : 'Searching…'
+                    : activeCategory
+                      ? `${CATEGORY_LABEL[activeCategory]}${locationLabel ? ` near ${locationLabel}` : ''}`
+                      : ''
                 }
               </p>
-              {loading && (
-                <div className="flex items-center gap-1">
-                  <Loader2 size={10} className="text-indigo-400 animate-spin"/>
-                  <span className="text-[10px] text-indigo-400">Searching nearby…</span>
-                </div>
+              {loading && hasResults && (
+                <Loader2 size={11} className="text-indigo-400 animate-spin"/>
               )}
             </div>
-
-            {/* Skeleton while loading and no local results yet */}
-            {loading && !hasResults && (
-              <>
-                <SkeletonCard/>
-                <SkeletonCard/>
-                <SkeletonCard/>
-              </>
-            )}
 
             {results.map(r => (
               <ResultCard
@@ -488,8 +397,8 @@ export default function SearchPage() {
               />
             ))}
 
-            {noNearby && !hasResults && !loading && (
-              <div className="text-center py-8">
+            {!loading && !hasResults && (
+              <div className="text-center py-10">
                 <p className="text-3xl mb-2">🔍</p>
                 <p className="text-gray-500 text-sm font-medium">No results found</p>
                 <p className="text-gray-400 text-xs mt-1">Try a different name or spelling</p>
@@ -516,8 +425,8 @@ export default function SearchPage() {
               <p className="text-gray-600 font-semibold text-sm">Search any business</p>
               <p className="text-gray-400 text-xs mt-1 leading-relaxed">
                 {locationLabel
-                  ? `Nearest locations appear first with the best card to use there.`
-                  : 'Type a business name to find the best card.'}
+                  ? `Nearest results appear first. Tap any result for your best card.`
+                  : 'Type a business name or pick a category above.'}
               </p>
             </div>
           </div>
