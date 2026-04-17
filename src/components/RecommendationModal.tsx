@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Zap, ChevronDown, ChevronUp, Gift } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, Zap, ChevronDown, ChevronUp, Gift, Pencil } from 'lucide-react';
 import { Recommendation, RankedCard } from '../types';
 import { rewardLabel, earnedDollars } from '../lib/displayReward';
 
@@ -12,23 +12,45 @@ interface Props {
 
 export function RecommendationModal({ recommendation, onClose }: Props) {
   const [showAlternatives, setShowAlternatives] = useState(false);
+  const [amount, setAmount]     = useState<number | null>(null);
+  const [editing, setEditing]   = useState(false);
+  const [inputVal, setInputVal] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Reset amount whenever a new recommendation opens
+  useEffect(() => {
+    if (recommendation) {
+      setAmount(null);
+      setEditing(false);
+      setInputVal('');
+    }
+  }, [recommendation?.id]);
 
   if (!recommendation) return null;
 
   const { best, alternatives, explanation, context, isHighValue, bonusContext } = recommendation;
-  const estimatedEarned = ((best.effectiveCPD / 100) * context.estimatedAmount).toFixed(2);
+  const displayAmount = amount ?? context.estimatedAmount;
+  const isCustom = amount !== null;
+
+  function startEdit() {
+    setInputVal(String(displayAmount));
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  }
+
+  function commitEdit() {
+    const parsed = parseFloat(inputVal.replace(/[^0-9.]/g, ''));
+    if (!isNaN(parsed) && parsed > 0) setAmount(Math.round(parsed));
+    else setAmount(null);
+    setEditing(false);
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose} />
 
-      {/* Bottom Sheet */}
       <div className="relative w-full max-w-[480px] bg-white rounded-t-3xl shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
-        {/* Drag Handle */}
+        {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-0">
           <div className="w-9 h-1 bg-gray-300 rounded-full" />
         </div>
@@ -36,21 +58,15 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
         {/* Header */}
         <div className="flex items-start justify-between px-5 pt-3 pb-3">
           <div>
-            <p className="text-[11px] uppercase tracking-widest font-semibold text-gray-400">
-              Best card for
-            </p>
+            <p className="text-[11px] uppercase tracking-widest font-semibold text-gray-400">Best card for</p>
             <h2 className="text-xl font-black text-gray-900 mt-0.5">
               {context.merchant.emoji} {context.merchant.displayName}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {context.merchant.scenarioLabel} · estimated ${context.estimatedAmount} purchase
-            </p>
+            <p className="text-xs text-gray-500 mt-0.5">{context.merchant.scenarioLabel}</p>
           </div>
-          <button
-            onClick={onClose}
+          <button onClick={onClose}
             className="mt-1 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors flex-shrink-0"
-            aria-label="Close"
-          >
+            aria-label="Close">
             <X size={15} />
           </button>
         </div>
@@ -71,24 +87,49 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
               </div>
             )}
 
-            <p className="text-white/60 text-[10px] uppercase tracking-widest font-semibold mb-1">
-              Use this card
-            </p>
-            <h3 className="text-white text-2xl font-black leading-tight mb-1">
-              {best.card.shortName}
-            </h3>
+            <p className="text-white/60 text-[10px] uppercase tracking-widest font-semibold mb-1">Use this card</p>
+            <h3 className="text-white text-2xl font-black leading-tight mb-1">{best.card.shortName}</h3>
             <p className="text-white/70 text-sm font-semibold mb-4">
               {rewardLabel(best.card.rewardsType, best.multiplier)}
             </p>
 
             <div className="flex items-end gap-6">
               <div>
-                <p className="text-white/60 text-xs font-medium">on a ${context.estimatedAmount} purchase</p>
+                {/* Editable amount row */}
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  {editing ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-white/60 text-xs">on $</span>
+                      <input
+                        ref={inputRef}
+                        type="number"
+                        inputMode="decimal"
+                        value={inputVal}
+                        onChange={e => setInputVal(e.target.value)}
+                        onBlur={commitEdit}
+                        onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
+                        className="w-20 bg-white/20 text-white text-xs font-semibold rounded-lg px-2 py-1 outline-none border border-white/40 placeholder-white/40"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={startEdit}
+                      className="flex items-center gap-1 group"
+                    >
+                      <span className="text-white/60 text-xs">
+                        on ${displayAmount}{isCustom ? '' : ' est.'}
+                      </span>
+                      <Pencil size={10} className="text-white/40 group-hover:text-white/70 transition-colors" />
+                    </button>
+                  )}
+                </div>
+
                 <p className="text-white text-4xl font-black leading-none">
-                  ≈{earnedDollars(best.effectiveCPD, context.estimatedAmount)}
+                  ≈{earnedDollars(best.effectiveCPD, displayAmount)}
                 </p>
                 <p className="text-white/70 text-sm font-semibold mt-0.5">earned back</p>
               </div>
+
               <div className="pb-0.5 border-l border-white/20 pl-6">
                 <p className="text-white/60 text-xs">reward rate</p>
                 <p className="text-white text-xl font-bold">{best.effectiveCPD.toFixed(1)}¢</p>
@@ -104,10 +145,7 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
             <div className="flex items-start gap-2.5">
               <Gift size={15} className="text-violet-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-xs font-bold text-violet-800 mb-1">
-                  Bonus boosting this recommendation
-                </p>
-                {/* Score breakdown */}
+                <p className="text-xs font-bold text-violet-800 mb-1">Bonus boosting this recommendation</p>
                 <div className="flex gap-3 text-xs mb-2">
                   <div>
                     <p className="text-violet-400">Base earn</p>
@@ -125,13 +163,11 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
                   </div>
                 </div>
                 <p className="text-[11px] text-violet-500 leading-relaxed">
-                  ${bonusContext.remainingSpend.toLocaleString()} to unlock a $
-                  {bonusContext.totalValue} bonus — each dollar spent here counts.
+                  ${bonusContext.remainingSpend.toLocaleString()} to unlock a ${bonusContext.totalValue} bonus — each dollar spent here counts.
                 </p>
                 {bonusContext.baselineBest && (
                   <p className="text-[11px] text-violet-400 mt-1">
-                    Without the bonus, {bonusContext.baselineBest.shortName} would be best (
-                    {bonusContext.baselineBest.effectiveCPD.toFixed(1)}¢/$).
+                    Without the bonus, {bonusContext.baselineBest.shortName} would be best ({bonusContext.baselineBest.effectiveCPD.toFixed(1)}¢/$).
                   </p>
                 )}
               </div>
@@ -141,9 +177,7 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
 
         {/* ── Explanation ── */}
         <div className="mx-4 mb-4 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
-          <p className="text-indigo-900 text-sm leading-relaxed font-medium">
-            {explanation}
-          </p>
+          <p className="text-indigo-900 text-sm leading-relaxed font-medium">{explanation}</p>
         </div>
 
         {/* ── Alternatives ── */}
@@ -160,7 +194,7 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
             {showAlternatives && (
               <div className="space-y-2 mt-1">
                 {alternatives.map(ranked => (
-                  <AlternativeRow key={ranked.card.id} ranked={ranked} amount={context.estimatedAmount} />
+                  <AlternativeRow key={ranked.card.id} ranked={ranked} amount={displayAmount} />
                 ))}
               </div>
             )}
@@ -175,17 +209,12 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
 
 function AlternativeRow({ ranked, amount }: { ranked: RankedCard; amount: number }) {
   const { card, multiplier, effectiveCPD, baseCPD, bonusApplied, rank } = ranked;
-  const displayCPD = effectiveCPD;
-  const isZero = displayCPD <= 1.0;
+  const isZero = effectiveCPD <= 1.0;
 
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-xl ${isZero ? 'bg-gray-50 opacity-60' : 'bg-gray-50'}`}>
-      <span className="text-gray-400 text-xs font-bold w-4 text-center flex-shrink-0">
-        {rank}
-      </span>
-
+    <div className={`flex items-center gap-3 p-3 rounded-xl bg-gray-50 ${isZero ? 'opacity-60' : ''}`}>
+      <span className="text-gray-400 text-xs font-bold w-4 text-center flex-shrink-0">{rank}</span>
       <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${card.gradient} flex-shrink-0`} />
-
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-semibold text-gray-900 truncate">{card.shortName}</p>
@@ -197,10 +226,9 @@ function AlternativeRow({ ranked, amount }: { ranked: RankedCard; amount: number
         </div>
         <p className="text-xs text-gray-500">{rewardLabel(card.rewardsType, multiplier)}</p>
       </div>
-
       <div className="text-right flex-shrink-0">
-        <p className={`text-sm font-bold ${displayCPD >= 5 ? 'text-green-600' : 'text-gray-700'}`}>
-          {earnedDollars(displayCPD, amount)} back
+        <p className={`text-sm font-bold ${effectiveCPD >= 5 ? 'text-green-600' : 'text-gray-700'}`}>
+          {earnedDollars(effectiveCPD, amount)} back
         </p>
         {bonusApplied && baseCPD !== undefined && (
           <p className="text-[10px] text-violet-400">{earnedDollars(baseCPD, amount)} base</p>
