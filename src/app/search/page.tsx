@@ -233,7 +233,7 @@ export default function SearchPage() {
     const sid = ++searchIdRef.current;
     setLoading(true);
 
-    debounceRef.current = setTimeout(async () => {
+    debounceRef.current = setTimeout(async () => { // 150ms — fast typeahead
       try {
         const params = new URLSearchParams({ q });
         if (userCoords) {
@@ -252,7 +252,7 @@ export default function SearchPage() {
       } finally {
         if (searchIdRef.current === sid) setLoading(false);
       }
-    }, 200); // 200ms debounce — fast like autocomplete
+    }, 150);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
