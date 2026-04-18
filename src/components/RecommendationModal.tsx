@@ -55,27 +55,22 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
 
         {/* ── Spend amount input ── */}
         <div className="mx-4 mb-3">
-          <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3">
-            <div className="flex-1">
-              <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider mb-1">How much are you spending?</p>
-              <div className="flex items-center gap-1">
-                <span className="text-gray-700 text-lg font-bold">$</span>
-                <input
-                  ref={inputRef}
-                  type="number"
-                  inputMode="decimal"
-                  value={inputVal}
-                  onChange={e => setInputVal(e.target.value)}
-                  placeholder={String(context.estimatedAmount)}
-                  className="flex-1 bg-transparent text-gray-900 text-lg font-bold outline-none placeholder-gray-300 min-w-0"
-                />
-              </div>
-            </div>
+          <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider mb-1.5 px-1">
+            How much are you spending?
+          </p>
+          <div className="flex items-center gap-2 bg-gray-50 border-2 border-gray-200 focus-within:border-indigo-400 rounded-2xl px-4 py-3 transition-colors">
+            <span className="text-gray-500 text-xl font-bold">$</span>
+            <input
+              ref={inputRef}
+              type="text"
+              inputMode="decimal"
+              value={inputVal}
+              onChange={e => setInputVal(e.target.value.replace(/[^0-9.]/g, ''))}
+              placeholder={String(context.estimatedAmount)}
+              className="flex-1 bg-transparent text-gray-900 text-xl font-bold outline-none placeholder-gray-300 min-w-0"
+            />
             {!inputVal && (
-              <div className="text-right flex-shrink-0">
-                <p className="text-[10px] text-gray-400">estimated</p>
-                <p className="text-xs font-semibold text-gray-500">${context.estimatedAmount}</p>
-              </div>
+              <span className="text-xs text-gray-400 flex-shrink-0">est.</span>
             )}
           </div>
         </div>
