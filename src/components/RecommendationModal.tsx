@@ -73,6 +73,17 @@ export function RecommendationModal({ recommendation, onClose }: Props) {
               <span className="text-xs text-gray-400 flex-shrink-0">est.</span>
             )}
           </div>
+          {/* Live result — visible while keyboard is open */}
+          <div className="flex items-center gap-2 mt-2 px-1">
+            <div className={`w-5 h-5 rounded-md bg-gradient-to-br ${best.card.gradient} flex-shrink-0`}/>
+            <p className="text-sm font-bold text-gray-800">
+              {best.card.shortName} earns{' '}
+              <span className="text-green-600">
+                ≈{earnedDollars(best.effectiveCPD, displayAmount)} back
+              </span>
+              {' '}on ${displayAmount}
+            </p>
+          </div>
         </div>
 
         {/* ── Best Card Block ── */}
